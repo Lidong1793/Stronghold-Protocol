@@ -79,25 +79,26 @@ const extOf = (rel) => { const m = /\.[A-Za-z0-9]+$/.exec(rel); return m ? m[0].
 
 // ---- app version ranges -------------------------------------------------------------------------------------------
 
-/** [major, minor, patch] of a version ('0.2.0-dev' → [0, 2, 0]: a pre-release counts as its release), or null. */
+/** [major, minor, patch, revision]; an omitted revision is 0, a pre-release counts as its release. */
 const versionCore = (v) => {
-  const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(v ?? '').trim());
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-[0-9A-Za-z.-]+)?$/.exec(String(v ?? '').trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4] || 0)] : null;
 };
-const cmp = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+const cmp = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || (a[3] || 0) - (b[3] || 0);
 
 /** One comparator of a range as [op, version] bounds, or null when it is not one. */
 function bounds(c) {
   if (c === '*' || c === 'x') return [];
-  const m = /^(\^|~|>=|<=|>|<|=)?v?(\d+)(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?$/.exec(c);
+  const m = /^(\^|~|>=|<=|>|<|=)?v?(\d+)(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:\.(\d+))?$/.exec(c);
   if (!m) return null;
-  const [, op = '', a, b, d] = m;
+  const [, op = '', a, b, d, revision] = m;
   const wild = (s) => s === undefined || /^[xX*]$/.test(s);
+  if (revision !== undefined && (wild(b) || wild(d))) return null;
   const M = Number(a);
   const N = wild(b) ? 0 : Number(b);
   const P = wild(d) ? 0 : Number(d);
   const partial = wild(b) ? 1 : wild(d) ? 2 : 3; // how many parts were given
-  const lo = [M, N, P];
+  const lo = [M, N, P, Number(revision || 0)];
   if (op === '^') return [['>=', lo], ['<', M > 0 ? [M + 1, 0, 0] : partial >= 2 ? [0, N + 1, 0] : [1, 0, 0]]];
   if (op === '~') return [['>=', lo], ['<', partial >= 2 ? [M, N + 1, 0] : [M + 1, 0, 0]]];
   if (op === '' || op === '=') {

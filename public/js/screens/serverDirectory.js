@@ -71,7 +71,7 @@ function DirectoryRoom({ room, online, busy, onEnter }) {
   return html`<article class=${`server-room${room.inMatch ? ' is-running' : ''}`} aria-label=${t('同盟 {code}', { code: room.code })}>
     <div class="server-room__identity">
       <span class="server-room__emblem"><${Icon} name=${solo ? 'user' : 'users'} /></span>
-      <div class="server-room__name"><strong>${room.hostName || t('博士')}${solo ? t('的独立模拟') : t('的同盟')}</strong>
+      <div class="server-room__name"><strong>${t(solo ? '{name}的独立模拟' : '{name}的同盟', { name: room.hostName || t('博士') })}</strong>
         <span class="server-room__key"><${Icon} name="key" /><span class="num">${room.code}</span></span>
       </div>
     </div>

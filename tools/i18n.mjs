@@ -730,7 +730,7 @@ async function cmdCheck(flags) {
 const isLangArg = (a) => !!canonicalLang(a) && !existsSync(path.resolve(ROOT, a));
 
 /** The `app` range a new pack targets: this release and later ('>=0.2.0' on 0.2.0-dev). */
-const appRange = () => `>=${(/^\d+\.\d+\.\d+/.exec(APP_VERSION) || ['0.0.0'])[0]}`;
+const appRange = () => `>=${APP_VERSION.replace(/-.*$/, '')}`;
 
 /**
  * A pack skeleton (or an existing pack with the msgids it lacks added, empty): the `_meta` manifest first, then every
