@@ -11,16 +11,12 @@
 // Texts go through t() (docs/I18N.md); the module-level tables hold msgids (N_) translated where they are shown, the
 // config.json mode texts come localized from data.js.
 
-import { ResumeMatchButton } from '../ui/resumeMatch.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MAX_SPECTATORS, modeIdFor, ERR } from '../../../shared/constants.js';
-import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo } from '../ui/components.js';
+import { html, Button, Icon, MicroLabel, Panel, TextField, Tooltip, Spinner, DifficultyIcon } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
-import { GuideButton } from '../ui/guide.js';
-import { openStats } from './stats.js';
-import { SettingsButton } from '../ui/settings.js';
-import { PwaInstallButton } from '../ui/device.js';
-import { LoadoutButton } from './loadout.js';
+import { LobbyHeader } from '../ui/lobbyHeader.js';
+import { ServerDirectory } from './serverDirectory.js';
 import { net, identity } from '../net.js';
 import { store, useStore, shallowEqual, loadPref, savePref } from '../store.js';
 import { getConfig, getMode, getStage, useData } from '../data.js';
@@ -239,9 +235,19 @@ function DifficultyCard({ roomMode, difficulty, selected, onSelect }) {
   </button>`;
 }
 
-/** Lobby screen component. */
+/** Start opens the directory; creation and key entry reuse the existing protocol screen. */
 export function LobbyScreen() {
-  const me = useStore((s) => s.me, shallowEqual);
+  const [view, setView] = useState('server');
+  const backToTitle = () => {
+    identity.setEntered(false);
+    store.set((s) => ({ session: { ...s.session, entered: false } }));
+  };
+  return view === 'server'
+    ? html`<${ServerDirectory} onCreate=${() => setView('create')} onJoin=${() => setView('join')} onBack=${backToTitle} />`
+    : html`<${ProtocolScreen} focusJoin=${view === 'join'} onBack=${() => setView('server')} />`;
+}
+
+function ProtocolScreen({ focusJoin, onBack }) {
   const conn = useStore((s) => s.connection, shallowEqual);
   useData('config');
   const [roomMode, setRoomMode] = useState(() => (loadPref('lobby.mode', 'coop') === 'solo' ? 'solo' : 'coop'));
@@ -254,7 +260,11 @@ export function LobbyScreen() {
   const [recent] = useState(recentRooms);
   const alive = useRef(true);
   const inFlight = useRef(false); // synchronous guard against double clicks (state updates are async)
+  const joinInput = useRef(null);
   useEffect(() => () => { alive.current = false; }, []);
+  useEffect(() => {
+    if (focusJoin) joinInput.current?.focus({ preventScroll: true });
+  }, [focusJoin]);
 
   const online = conn.status === 'online';
   const codeOk = CODE_RE.test(code);
@@ -299,40 +309,9 @@ export function LobbyScreen() {
       throw err;
     }));
   };
-  const backToTitle = () => {
-    identity.setEntered(false);
-    store.set((s) => ({ session: { ...s.session, entered: false } }));
-  };
-
   return html`<div class="screen lobby-screen">
-    <header class="topbar">
-      <div class="topbar__left">
-        <${Button} variant="ghost" size="sm" icon="chevronLeft" onClick=${backToTitle} title=${t('返回标题')}>${t('返回')}<//>
-        <${PingPill} ms=${conn.ping} online=${online} />
-        <span class="topbar__sep" aria-hidden="true"></span>
-        <div class="topbar__tools">
-          <${SettingsButton} class="lobby-settings" variant="secondary" square=${true} />
-          <${GuideButton} class="lobby-guide" variant="secondary" square=${true} />
-          <${PwaInstallButton} class="lobby-pwa" square=${true} />
-        </div>
-      </div>
-      <div class="topbar__center">
-        <${MicroLabel} tone="mint">SIMULATION PROTOCOL SELECT<//>
-        <h1 class="topbar__title">${t('选择模拟协议')}</h1>
-      </div>
-      <div class="topbar__right">
-        <${ResumeMatchButton} />
-        <${LoadoutButton} from="lobby" size="sm" class="lobby-loadout" label=${t('干员调配')} />
-        <button type="button" class="me-chip me-chip--btn stats-entry" onClick=${openStats} title=${t('统计数据')} aria-label=${t('统计数据')}>
-          <${AvatarFrame} size="sm" name=${me.name} seat=${0} self=${true} />
-          <span class="me-chip__text">
-            <span class="me-chip__name">${me.name || t('博士')}</span>
-            <${MicroLabel}>${me.playerId != null ? `DOCTOR #${doctorNo(me.playerId)}` : 'DOCTOR'}<//>
-          </span>
-          <${Icon} name="chart" class="me-chip__stats" />
-        </button>
-      </div>
-    </header>
+    <${LobbyHeader} title=${t('选择模拟协议')}
+      micro="SIMULATION PROTOCOL SELECT" onBack=${onBack} backTitle=${t('返回服务器大厅')} />
 
     <div class="lobby-body screen__scroll">
       <section class="lobby-left">
@@ -344,7 +323,7 @@ export function LobbyScreen() {
         <div class="section-label"><span class="section-label__idx num">03</span>${t('加入同盟')}<${MicroLabel}>JOIN WITH ALLIANCE KEY<//></div>
         <${Panel} class="join-panel" tone="amber">
           <div class="join-row">
-            <${TextField} size="code" icon="key" value=${code} placeholder=${t('输入同盟密钥 / 粘贴邀请链接')}
+            <${TextField} size="code" icon="key" value=${code} inputRef=${joinInput} placeholder=${t('输入同盟密钥 / 粘贴邀请链接')}
               transform=${normalizeCode} onInput=${(v) => setCode(normalizeCode(v))} onEnter=${() => join()} />
             <${Button} variant="amber" size="lg" icon="users" loading=${busy === 'join'} disabled=${!codeOk || !online} onClick=${() => join()}>${t('加入同盟')}<//>
             <${Tooltip} text=${t('以观战者身份进入：不占博士席位，只能观看（每个同盟最多 {MAX_SPECTATORS} 名，模拟进行中也可进入）', { MAX_SPECTATORS })}>

@@ -10,6 +10,7 @@
 
 import { PROTOCOL_VERSION, APP_VERSION } from '../../shared/constants.js';
 import { buildTag } from './buildTag.js';
+import { lobbyReport } from './lobbyDirectory.js';
 import { setSecurityHeaders, sendError, sendJson, splitUrl } from './common.js';
 
 const MAX_URL_LENGTH = 4096;
@@ -49,6 +50,10 @@ export function createRequestHandler({ serveStatic, health, log }) {
     }
     if (parts.rawPath === '/healthz') {
       sendJson(req, res, 200, healthReport(health));
+      return;
+    }
+    if (parts.rawPath === '/api/lobby') {
+      sendJson(req, res, 200, lobbyReport(health));
       return;
     }
     await serveStatic(req, res, parts.rawPath, parts.query);
