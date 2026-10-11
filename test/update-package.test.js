@@ -86,6 +86,11 @@ test('versions compare numerically, a pre-release before its release', () => {
   assert.equal(compareVersions('0.2.1-test', '0.2.1'), -1);
   assert.equal(compareVersions('0.2.0', '0.2.1-test'), -1);
   assert.equal(compareVersions('1.0.0', '1.0.0'), 0);
+  assert.equal(compareVersions('0.2.4', '0.2.4.1'), -1);
+  assert.equal(compareVersions('0.2.4.10', '0.2.4.2'), 1);
+  assert.equal(compareVersions('0.2.4.1-dev', '0.2.4.1'), -1);
+  assert.equal(compareVersions('0.2.4.1', '0.2.5'), -1);
+  assert.equal(compareVersions('0.2.4', '0.2.4.0'), 0);
   assert.throws(() => compareVersions('x', '1.0.0'));
 });
 
