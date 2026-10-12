@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { attackClock, curveValue, gradientValue, groundPoint, isTexas, nodePoses, transformPoint, TexasFx } from '../../public/js/render/fx/texas.js';
 import { UNIT } from '../../public/js/render/style.js';
 import { installFakePixi, fakeViewCtx } from './fakepixi.js';
@@ -57,6 +58,57 @@ test('attack clocks choose the upcoming Spine cycle rather than a fixed wall-clo
   entry.trackTime = 1.1;
   assert.equal(attackClock(view, 0.1835).start, 1);
   assert.ok(attackClock(view, 0.6835).age < 0, 'the next cycle has not started yet');
+});
+
+test('v0.2.5 single attack clips keep their recovery phase instead of inventing another cycle', () => {
+  const entry = { animation: { name: 'Attack_Loop' }, loop: false, trackTime: 0.99, timeScale: 2 };
+  const view = { actor: { roles: { attack: { loop: 'Attack_Loop' } }, dur: () => 1,
+    entry: { hits: { Attack_Loop: [0.467] } }, spine: { state: { tracks: [entry] } } } };
+  for (const until of [0, 0.2, 1]) {
+    assert.equal(attackClock(view, until).start, 0);
+    assert.equal(attackClock(view, until).age, 0.99);
+  }
+});
+
+test('Texas native FX follows the real v0.2.5 single-attack Spine timeline at slow and fast attack speeds', async () => {
+  const fake = installFakePixi();
+  try {
+    const { SpineActor } = await import('../../public/js/render/spine.js');
+    const { AnimationState, AnimationStateData, SkeletonData, Skeleton, Animation } = await import('@pixi-spine/runtime-3.8');
+    const FakeSpine = fake.P.spine.Spine;
+    fake.P.spine.Spine = class extends FakeSpine {
+      constructor(data) { super(data); this.skeleton = new Skeleton(data); this.stateData = new AnimationStateData(data); this.state = new AnimationState(this.stateData); }
+      update(dt) { this.state.update(dt); this.state.apply(this.skeleton); }
+    };
+    const manifest = JSON.parse(readFileSync(new URL('../../data/assets.json', import.meta.url), 'utf8'));
+    const artEntry = manifest.chars.char_102_texas.spine.front;
+    for (const interval of [0.08, 1, 2.5]) {
+      const data = new SkeletonData();
+      data.animations = Object.entries(artEntry.animations).map(([name, duration]) => new Animation(name, [], duration));
+      const actor = new SpineActor(data, artEntry);
+      const view = { id: 1, x: 0, y: 0, info: { defId: 'char_102_texas' }, actor };
+      const ctx = fakeViewCtx(fake.P, { cam: () => ({ project: () => ({ x: 0, y: 0, s: 50 }) }) });
+      const fx = new TexasFx(ctx);
+      fx.art = { pack: { effects: { attack_01_start: { nodes: [], tracks: [], emitters: [] } }, meshes: {} }, textures: {} };
+      const lead = 0.03;
+      assert.ok(actor.windUp(interval, lead));
+      const prepared = actor.spine.state.tracks[0];
+      assert.equal(prepared.loop, false);
+      const token = [];
+      fx.windUp(view, lead, null, token); fx.windUp(view, lead, null, token);
+      assert.equal(fx.effects.length, 1);
+      for (let i = 0; i < 3; i++) {
+        actor.update(0.01); fx.update(0.01);
+        assert.ok(Math.abs(fx.effects[0].age - prepared.trackTime) < 1e-8);
+      }
+      actor.attack(interval); fx.attack(view, null, 'none');
+      assert.equal(actor.spine.state.tracks[0], prepared, 'one attack consumes its prepared clip');
+      assert.equal(fx.effects.length, 1, 'no second slash at the hit event');
+      actor.update(0.01); fx.update(0.01);
+      assert.ok(Math.abs(fx.effects[0].age - prepared.trackTime) < 1e-8);
+      fx.destroy(); actor.destroy();
+    }
+  } finally { fake.restore(); }
 });
 
 test('native RotationModule.curve rotates the slash and repeated look-ahead does not duplicate it', () => {

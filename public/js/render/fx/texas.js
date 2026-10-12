@@ -20,7 +20,8 @@ export function attackClock(view, until = 0) {
   if (!entry || !clip || (entry.animation?.name || actor.current) !== clip) return null;
   const duration = actor.dur(clip), hit = actor.entry?.hits?.[clip]?.[0] ?? duration / 2;
   const rate = Math.max(0.001, entry.timeScale || 1);
-  const start = Math.round((entry.trackTime + Math.max(0, until) * rate - hit) / duration) * duration || 0;
+  // v0.2.5 plays one clip per attack. Its recovery must never be mistaken for a future loop cycle.
+  const start = entry.loop === false ? 0 : Math.round((entry.trackTime + Math.max(0, until) * rate - hit) / duration) * duration || 0;
   return { view, entry, clip, start, age: entry.trackTime - start, rate };
 }
 
