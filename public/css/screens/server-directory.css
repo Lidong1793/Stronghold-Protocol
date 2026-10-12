@@ -1,5 +1,12 @@
 /* Server lobby: the existing mint/amber palette, bracket panels and protocol-screen chrome. */
 .server-body { width: 100%; max-width: 19.2rem; margin: 0 auto; padding: .34rem .6rem .4rem; }
+/* The protocol screen's card entrance, staggered once when the directory mounts. */
+.server-stat, .server-create, .server-rooms { animation: card-in var(--t-slow) var(--ease-out) backwards; }
+.server-stat:nth-child(2) { animation-delay: 40ms; }
+.server-stat:nth-child(3) { animation-delay: 80ms; }
+.server-stat:nth-child(4) { animation-delay: 120ms; }
+.server-create { animation-delay: 160ms; }
+.server-rooms { animation-delay: 200ms; }
 .server-overview__head, .server-rooms__heading { display: flex; align-items: center; justify-content: space-between; gap: .2rem; }
 .server-overview__head .section-label, .server-rooms__heading .section-label { margin-bottom: 0; }
 .server-live { display: flex; align-items: center; gap: .08rem; color: var(--mint-500); font-size: calc(.14 * var(--t)); }
@@ -95,4 +102,7 @@
   .server-create__actions .btn { flex: 1; }
   .server-toolbar__tools .field { width: auto; flex: 1; }
   .server-rooms__foot { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .server-stat, .server-create, .server-rooms { animation: none; }
 }
