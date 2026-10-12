@@ -2,6 +2,7 @@
 // Installed on FxSystem.prototype by ./system.js (a method container: never instantiated; `this` is the effect system).
 
 import { SKILL_GOLD, easeOut } from './limits.js';
+import { isTexas } from './texas.js';
 
 export class FxRings {
   // ---- rings / auras -----------------------------------------------------------------------------------------
@@ -60,6 +61,7 @@ export class FxRings {
   skill(view, on) {
     if (!view) return;
     if (!on) { this._aura(view, false); return; }
+    if (this.texas?.art && isTexas(view) && view.skillIndex !== 0) return;
     const z = (view.z || 0) + (view.hover || 0);
     const g = this._proj(view.x, view.y, z, this._g);
     const gx = g.x, gy = g.y, s = g.s;

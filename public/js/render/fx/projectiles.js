@@ -52,6 +52,7 @@ export class FxProjectiles {
   /** b.ev 'atk' visual. src/tgt are views (tgt may be null). */
   attack(src, tgt, kind) {
     if (!src) return;
+    this.texas?.attack(src, tgt, kind);
     // chain: the source is the previous target of the bounce (sim ai.js), so the arc hops unit to unit
     if (kind === 'chain' || kind === 'chainHeal') { if (tgt && tgt !== src) this._beam(src, tgt, kind === 'chainHeal' ? 0x7dffa8 : 0xc9a2ff, 0.22, 1, true); return; }
     if (kind === 'beam') { if (tgt && tgt !== src) this._beam(src, tgt, src.isEnemy ? 0xff7a5a : 0xffe6a8, 0.18, 0.15); return; }

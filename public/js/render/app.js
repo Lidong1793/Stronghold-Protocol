@@ -332,6 +332,8 @@ export async function createFieldView(host, options = {}) {
     fieldRect: () => (mode === 'battle' && battleMeta ? battleMeta.rect : null),
     subProfOf: (defId, info = null) => ((info && info.standInFor && data.standIn(defId)) || (info && info.diy && data.diy(defId, info.diy)) || data.chess(defId))?.subProfessionId || null,
     view: (id) => views.get(id) || null,
+    units: () => views.values(),
+    skillGrid: (view) => ctx.lookupDef(view.info)?.skill?.rangeGrid,
     screenSize: size,
     fieldTop: () => {
       const R = camRect();
@@ -1396,7 +1398,10 @@ export async function createFieldView(host, options = {}) {
     if (e[0] !== 'atk' || woundUp.has(e) || CHAIN_KINDS.has(e[3])) return;
     const v = views.get(e[1]);
     if (!v || !v.windUp) return;
-    if (v.windUp(t - upcomingT, e[3])) woundUp.add(e);
+    if (v.windUp(t - upcomingT, e[3])) {
+      woundUp.add(e);
+    }
+    if (!e[3] || e[3] === 'none') fx.texas.windUp(v, t - upcomingT, views.get(e[2]), e);
   }
 
   const EVS = [];

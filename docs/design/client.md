@@ -4,6 +4,14 @@ Part of [DESIGN.md](../DESIGN.md) (the index; section numbers are global).
 
 ## 9. Client rendering contract (public/js/render)
 
+Local Texas FX prototype (2026-10-12): base/elite Texas can use the optional original attack and Sword Rain art
+exported by `tools/local-extract/texas_fx.py` (ASSETS.md). `render/fx/texas.js` adapts native particles, meshes and
+animation curves; missing art falls back. Her existing skill grid selects visual targets at interpolated positions
+[ASSUMED at grid boundaries]. All damage, stun and simulation timing remain authoritative and unchanged. Unity
+TrailRenderer, particle sub-emitters and depth-buffer intersections are not reproduced.
+The slash is attached in the character's billboard space and timed from the rendered attack clip; the range border
+uses the Unity XY ground frame through the shared tile camera. These spaces must not share the same axis mapping.
+
 `import { createFieldView } from './render/app.js'`
 
 ```js

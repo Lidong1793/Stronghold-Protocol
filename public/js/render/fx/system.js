@@ -13,12 +13,14 @@ import { FxRings } from './rings.js';
 import { FxArrivals } from './arrivals.js';
 import { FxSim } from './simfx.js';
 import { FxZones } from './zones.js';
+import { TexasFx } from './texas.js';
 
 export class FxSystem {
   /**
    * @param {{ P, layers: { groundFx, fxAdd, fxNormal, text, screen }, cam: () => any, view: (id) => any,
    *           heightAt: (r,c)=>number, settings: object, assets: any, timeScale: () => number,
    *           subProfOf: (defId) => string|null, screenSize: () => {width,height}, fieldTop: () => number }} ctx
+   * Optional `units()` and `skillGrid(view)` callbacks provide read-only visual target selection for original FX.
    */
   constructor(ctx) {
     const P = ctx.P;
@@ -71,6 +73,7 @@ export class FxSystem {
     ctx.layers.screen.addChild(this.vignette);
     this.vigT = 0;
     this.time = 0;
+    this.texas = new TexasFx(ctx);
     this._p = { x: 0, y: 0, s: 0, depth: 0 };
     this._q = { x: 0, y: 0, s: 0, depth: 0 };
     this._g = { x: 0, y: 0, s: 0, depth: 0 };
@@ -78,6 +81,7 @@ export class FxSystem {
 
   /** Remove everything (battle reset). */
   clear() {
+    this.texas.clear();
     for (const p of this.parts) this._freeParticle(p);
     this.parts.length = 0;
     for (const pr of this.projs) this._releaseProj(pr);
@@ -109,6 +113,7 @@ export class FxSystem {
   }
 
   update(dt) {
+    this.texas.update(dt);
     this.time += dt;
     this._updateParticles(dt);
     this._updateProjs(dt);
@@ -141,6 +146,7 @@ export class FxSystem {
   }
 
   destroy() {
+    this.texas.destroy();
     this.clear();
     this.addPc.destroy({ children: true });
     this.normPc.destroy({ children: true });

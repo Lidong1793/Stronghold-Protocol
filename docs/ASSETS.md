@@ -441,6 +441,26 @@ Other renderer rules from research 07 §5.4–5.5:
 
 ### Other fallbacks
 
+**Local Texas FX prototype (2026-10-12).** `tools/local-extract/texas_fx.py --game <AB root>` uses the same Python
+dependencies as `extract.py` and exports `battle/prefabs/effects/texas.ab`, its shared materials and texture
+dependencies to `public/assets/local/fx/texas/`. The generated `pack.json`, ten original textures and five meshes
+are optional art, excluded from the code licence and git; the tool records them in `data/local-assets.json`
+(`fx/texas`) so local-art packaging includes them. No game data table is changed.
+
+`public/js/render/fx/texas.js` plays the original attack start/hit and Sword Rain start/range/hit prefabs using
+their particle lifetime, size/colour curves, mesh UVs, Transform animation and animated `_TintColor`. The two
+simple Torappu particle blend modes are adapted to Pixi; Unity TrailRenderer, particle sub-emitters and depth-buffer
+intersections are not implemented. Attack wind-up uses the existing event look-ahead. Sword Rain's visual targets
+use the existing skill grid; interpolated positions at its boundary remain [ASSUMED]. Damage, stun, costs and all
+sim events are unchanged. Base and elite Texas use this overlay; Texas the Omertosa and other operators do not.
+Attack-start meshes use the rendered Spine transform and its actual attack-clip clock, including mirroring and
+speed changes. Their native angular velocity is `RotationModule.curve`. Range meshes instead use Unity's XY floor
+plane / negative-Z height and the battlefield camera, so their footprint follows the tile seams. A paused pose still
+reprojects when the camera or attachment changes.
+Missing/broken art retains the procedural FX. The optional renderer has effect/particle caps and releases its
+display objects on a battle reset. This is a local prototype, not a claim of pixel-identical original rendering.
+
+
 - **Emotes and 玩法说明 pages** (`public/js/data.js artUrls / nextArtUrl`, `ui/guide.js guideStage`): the local-client picture (`data/local-assets.json`) first, then the mirror copy (`ui['emoticon/…']`, `ui['guide/…']`), each tried in turn when one fails to load; when none is left — none listed, or every copy failed (for example data/assets.json lists the downloaded pages but the files are not on disk yet: a `git pull` and restart without setup) — the neutral emote glyph, and for a page the official tips text (`config.tips`). The rest of the local-client art (the 3D board, the official HUD sprites, module type icons, the two enemy models and the 40 token models above) is not downloaded: the client looks it up in `data/local-assets.json` only (most of the HUD sprites are on the mirror too, DESIGN §22.5); docs/DEPLOY.md §6 lists what falls back without it.
 - **Tokens:**
   - Without an avatar, use `chars[owner].avatar` with a 召唤物 badge, or `prof.battlecard.token` — except 圣聆初雪's 保护目标（冻结状态） (PRTS 无头像; the frozen gate), drawn as a procedural ice diamond (`render/units.js ICE_TOKENS`).
