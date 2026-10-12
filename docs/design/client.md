@@ -4,6 +4,14 @@ Part of [DESIGN.md](../DESIGN.md) (the index; section numbers are global).
 
 ## 9. Client rendering contract (public/js/render)
 
+Local lobby matching (2026-10-12): the directory opens a matching screen with the existing protocol header and
+difficulty cards. Start/cancel use `match.start` / `match.cancel`; the server owns the 30-second deadline and room
+assignment. The client displays a server-clock countdown, locks difficulty while searching and cancels on leaving
+the screen. Co-op hosts control `room.state.isPublic`; other members see it read-only. The directory displays
+sequential room numbers and enters through an opaque `directoryId`, never a publicly returned join key. Private
+rooms are omitted; four-character key/invite entry retains the original protocol-screen layout (network.md §8.1).
+The directory's match/create/invite actions use three equal-width columns, including at narrow widths.
+
 Local Texas FX prototype (2026-10-12): base/elite Texas can use the optional original attack and Sword Rain art
 exported by `tools/local-extract/texas_fx.py` (ASSETS.md). `render/fx/texas.js` adapts native particles, meshes and
 animation curves; missing art falls back. Her existing skill grid selects visual targets at interpolated positions

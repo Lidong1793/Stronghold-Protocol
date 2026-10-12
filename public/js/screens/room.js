@@ -260,6 +260,7 @@ export function RoomScreen() {
   };
   const setDifficulty = (difficulty) => run('diff', () => net.request('room.setDifficulty', { difficulty }));
   const setAiLast = (on) => run('ailast', () => net.request('room.setAiPicksLast', { on }));
+  const setPublic = () => run('public', () => net.request('room.setPublic', { on: room.isPublic === false }));
   // spectator seats: the host frees one; a spectator takes a free player seat with room.join of this room
   const removeSpectator = (playerId) => run(`rs${playerId}`, () => net.request('room.removeSpectator', { playerId }));
   const sit = () => run('sit', () => net.request('room.join', { code: room.code }));
@@ -342,7 +343,16 @@ export function RoomScreen() {
         <span class="room-bar__label">${t('模拟难度')}<${MicroLabel}>DIFFICULTY<//></span>
         <div class="room-bar__opts">
           <${DifficultyPicker} room=${room} isHost=${facts.isHost} busy=${busy} onPick=${setDifficulty} />
-          <${AiLastToggle} option=${aiLastOption(room, me.playerId)} busy=${busy} onToggle=${setAiLast} />
+          <div class="room-bar__toggles">
+            <${AiLastToggle} option=${aiLastOption(room, me.playerId)} busy=${busy} onToggle=${setAiLast} />
+            ${coop ? html`<${Tooltip} text=${room.isPublic === false ? t('仅可通过四位同盟密钥或邀请链接加入 / 观战') : t('允许匹配玩家、大厅加入和观战')}>
+              <button type="button" role="switch" aria-label=${t('公开房间')} aria-checked=${room.isPublic === false ? 'false' : 'true'}
+                class=${`dpick__opt ailast__opt${room.isPublic === false ? '' : ' is-active'}`}
+                disabled=${!facts.isHost || !online || !!busy} onClick=${setPublic}>
+                <${Icon} name="check" class=${room.isPublic === false ? '' : 'is-on'} />${t('公开房间')}
+              </button>
+            <//>` : null}
+          </div>
         </div>
       </div>
       <div class="room-bar__center">

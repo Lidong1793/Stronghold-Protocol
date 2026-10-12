@@ -1253,5 +1253,22 @@
   "请检查服务器连接，或点击刷新重试。": "Check your connection or click Refresh to try again.",
   "试试其他密钥、昵称或房间状态。": "Try another key, host name, or room status.",
   "点击上方「创建同盟」，发起本服务器的第一场模拟。": "Click Create Alliance above to start the first simulation on this server.",
-  "等待中的同盟可直接加入；模拟已开始时可进入观战席。": "Join waiting Alliances directly, or spectate simulations already in progress."
+  "等待中的同盟可直接加入；模拟已开始时可进入观战席。": "Join waiting Alliances directly, or spectate simulations already in progress.",
+  "同盟编号 {number}": "Alliance No. {number}",
+  "匹配房间": "Find a Room",
+  "搜索编号 / 房主昵称": "Search number / host name",
+  "同盟 / 编号": "Alliance / Number",
+  "试试其他编号、昵称或房间状态。": "Try another number, host name, or room status.",
+  "匹配状态": "Matchmaking Status",
+  "正在寻找同盟…": "Searching for an Alliance…",
+  "集结你的同盟": "Assemble Your Alliance",
+  "自动加入相同难度的公开等待房间，30 秒内未找到则创建新同盟。": "Join an open waiting room of the same difficulty. If none is found within 30 seconds, a new Alliance is created.",
+  "秒后自动创建同盟": "seconds until a new Alliance is created",
+  "选择难度，准备开始匹配": "Choose a difficulty to start matchmaking",
+  "取消匹配": "Cancel Matchmaking",
+  "开始匹配": "Start Matchmaking",
+  "取消或断开连接后停止匹配，不会自动创建房间。": "Cancelling or disconnecting stops matchmaking and automatic room creation.",
+  "仅可通过四位同盟密钥或邀请链接加入 / 观战": "Join or spectate only with the four-character Alliance Key or an invite link",
+  "允许匹配玩家、大厅加入和观战": "Allow matchmaking, joining and spectating from the lobby",
+  "公开房间": "Public Room"
 }

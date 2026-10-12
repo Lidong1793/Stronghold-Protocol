@@ -68,11 +68,11 @@ function DirectoryRoom({ room, online, busy, onEnter }) {
   const phaseName = t(PHASE_NAMES[room.phase] || '模拟进行中');
   const action = room.inMatch ? 'spectate' : 'join';
   const available = room.inMatch ? room.canSpectate : room.canJoin;
-  return html`<article class=${`server-room${room.inMatch ? ' is-running' : ''}`} aria-label=${t('同盟 {code}', { code: room.code })}>
+  return html`<article class=${`server-room${room.inMatch ? ' is-running' : ''}`} aria-label=${t('同盟编号 {number}', { number: room.number })}>
     <div class="server-room__identity">
       <span class="server-room__emblem"><${Icon} name=${solo ? 'user' : 'users'} /></span>
       <div class="server-room__name"><strong>${t(solo ? '{name}的独立模拟' : '{name}的同盟', { name: room.hostName || t('博士') })}</strong>
-        <span class="server-room__key"><${Icon} name="key" /><span class="num">${room.code}</span></span>
+        <span class="server-room__key"><${Icon} name="users" /><span class="num">${room.number}</span></span>
       </div>
     </div>
     <div class="server-room__protocol">
@@ -97,14 +97,14 @@ function DirectoryRoom({ room, online, busy, onEnter }) {
     <div class="server-room__actions">
       ${solo ? html`<span class="server-room__private"><${Icon} name="user" />${t('独立模拟')}</span>`
         : html`<${Button} variant=${room.inMatch ? 'amber' : 'primary'} size="md" icon=${room.inMatch ? 'eye' : 'users'}
-          disabled=${!online || !!busy || !available} loading=${busy === `${action}:${room.code}`}
+          disabled=${!online || !!busy || !available} loading=${busy === `${action}:${room.directoryId}`}
           onClick=${() => onEnter(room, action)}>
           ${room.inMatch ? room.canSpectate ? t('观战') : t('观战席已满') : room.canJoin ? t('加入同盟') : t('席位已满')}<//>`}
     </div>
   </article>`;
 }
 
-export function ServerDirectory({ onCreate, onJoin, onBack }) {
+export function ServerDirectory({ onCreate, onJoin, onMatch, onBack }) {
   const online = useStore((s) => s.connection.status === 'online');
   const { snapshot, refreshing, error, refresh } = useDirectory(online);
   const [filter, setFilter] = useState('all');
@@ -114,14 +114,16 @@ export function ServerDirectory({ onCreate, onJoin, onBack }) {
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
   const query = search.trim().toLowerCase();
-  const rooms = (snapshot?.rooms || []).filter((room) =>
+  const listed = snapshot?.rooms || [];
+  const waiting = listed.filter(room => !room.inMatch).length;
+  const rooms = listed.filter((room) =>
     (filter === 'all' || (filter === 'running' ? room.inMatch : !room.inMatch)) &&
-    (!query || `${room.code} ${room.hostName}`.toLowerCase().includes(query)));
+    (!query || `${room.number} ${room.hostName}`.toLowerCase().includes(query)));
   const enter = async (room, action) => {
     if (!online || pending.current) return;
     pending.current = true;
-    setBusy(`${action}:${room.code}`);
-    try { await net.request(action === 'spectate' ? 'room.spectate' : 'room.join', { code: room.code }); }
+    setBusy(`${action}:${room.directoryId}`);
+    try { await net.request('room.enter', { directoryId: room.directoryId, spectate: action === 'spectate' }); }
     catch (err) { toastError(err); if (alive.current) refresh(); }
     finally { pending.current = false; if (alive.current) setBusy(null); }
   };
@@ -144,6 +146,7 @@ export function ServerDirectory({ onCreate, onJoin, onBack }) {
         <div class="server-create__text"><${MicroLabel} tone="mint">ESTABLISH AN ALLIANCE<//>
           <h2>${t('集结同盟，准备出发')}</h2><p>${t('创建你的同盟，或加入下方等待中的房间，与其他博士一起开始模拟。')}</p></div>
         <div class="server-create__actions">
+          <${Button} variant="amber" size="lg" icon="search" onClick=${onMatch}>${t('匹配房间')}<//>
           <${Button} variant="primary" size="lg" icon="plus" iconRight="chevrons" onClick=${onCreate}>${t('创建同盟')}<//>
           <${Button} variant="secondary" size="lg" icon="key" onClick=${onJoin}>${t('密钥 / 邀请链接加入')}<//>
         </div>
@@ -151,23 +154,23 @@ export function ServerDirectory({ onCreate, onJoin, onBack }) {
 
       <section class="server-rooms" aria-label=${t('同盟列表')}>
         <div class="server-rooms__heading"><div class="section-label"><span class="section-label__idx num">02</span>${t('同盟列表')}<${MicroLabel}>ALLIANCE DIRECTORY<//></div>
-          <span class="server-rooms__count num">${rooms.length} / ${snapshot?.roomCount ?? 0}</span></div>
+          <span class="server-rooms__count num">${rooms.length} / ${listed.length}</span></div>
         <div class="server-toolbar">
           <${Tabs} value=${filter} onChange=${setFilter} items=${[
-            { id: 'all', label: t('全部同盟'), badge: snapshot?.roomCount ?? 0 },
-            { id: 'waiting', label: t('等待中'), badge: snapshot?.waitingRooms ?? 0 },
-            { id: 'running', label: t('模拟进行中'), badge: snapshot?.runningRooms ?? 0 },
+            { id: 'all', label: t('全部同盟'), badge: listed.length },
+            { id: 'waiting', label: t('等待中'), badge: waiting },
+            { id: 'running', label: t('模拟进行中'), badge: listed.length - waiting },
           ]} />
-          <div class="server-toolbar__tools"><${TextField} icon="search" value=${search} onInput=${setSearch} label=${t('搜索同盟')} placeholder=${t('搜索密钥 / 房主昵称')} />
+          <div class="server-toolbar__tools"><${TextField} icon="search" value=${search} onInput=${setSearch} label=${t('搜索同盟')} placeholder=${t('搜索编号 / 房主昵称')} />
             <${Button} size="sm" icon="refresh" loading=${refreshing} onClick=${refresh} title=${t('刷新房间列表')}>${t('刷新')}<//></div>
         </div>
-        <div class="server-list-head" aria-hidden="true"><span>${t('同盟 / 密钥')}</span><span>${t('模拟协议')}</span><span>${t('成员 / 观战')}</span><span>${t('游戏状态')}</span><span>${t('操作')}</span></div>
+        <div class="server-list-head" aria-hidden="true"><span>${t('同盟 / 编号')}</span><span>${t('模拟协议')}</span><span>${t('成员 / 观战')}</span><span>${t('游戏状态')}</span><span>${t('操作')}</span></div>
         <div class="server-room-list" aria-busy=${refreshing ? 'true' : 'false'}>
-          ${rooms.length ? rooms.map((room) => html`<${DirectoryRoom} key=${room.code} room=${room} online=${online && !error} busy=${busy} onEnter=${enter} />`)
+          ${rooms.length ? rooms.map((room) => html`<${DirectoryRoom} key=${room.directoryId} room=${room} online=${online && !error} busy=${busy} onEnter=${enter} />`)
             : html`<div class="server-empty" role="status"><span class="server-empty__icon"><${Icon} name="users" /></span>
               ${!snapshot && refreshing ? html`<${Spinner} label=${t('正在读取服务器房间…')} />`
                 : html`<h3>${!snapshot && error ? t('暂时无法获取房间列表') : query || filter !== 'all' ? t('没有符合条件的同盟') : t('暂无同盟，等待你的集结')}</h3>
-                  <p>${!snapshot && error ? t('请检查服务器连接，或点击刷新重试。') : query || filter !== 'all' ? t('试试其他密钥、昵称或房间状态。') : t('点击上方「创建同盟」，发起本服务器的第一场模拟。')}</p>`}
+                  <p>${!snapshot && error ? t('请检查服务器连接，或点击刷新重试。') : query || filter !== 'all' ? t('试试其他编号、昵称或房间状态。') : t('点击上方「创建同盟」，发起本服务器的第一场模拟。')}</p>`}
             </div>`}
         </div>
         <div class="server-rooms__foot"><span><${Icon} name="info" />${t('等待中的同盟可直接加入；模拟已开始时可进入观战席。')}</span>

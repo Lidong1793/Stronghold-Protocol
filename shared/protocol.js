@@ -383,6 +383,10 @@ export const C2S = {
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
   'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v) },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
+  'room.enter': { directoryId: (v) => typeof v === 'string' && /^[a-f0-9]{24}$/.test(v), spectate: isBool },
+  'room.setPublic': { on: isBool },
+  'match.start': { difficulty: (v) => DIFFICULTIES.includes(v) },
+  'match.cancel': {},
   'room.leave': {},
   'room.ready': { ready: isBool },
   'room.setDifficulty': { difficulty: (v) => DIFFICULTIES.includes(v) },
@@ -470,7 +474,7 @@ export const C2S = {
 // Server → client message types (documentation + client dispatch table keys).
 export const S2C = [
   'welcome', 'ok', 'error', 'pong',
-  'room.state', 'room.closed',
+  'room.state', 'room.closed', 'match.state',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)
   'm.unitStats',

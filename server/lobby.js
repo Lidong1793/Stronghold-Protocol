@@ -2,6 +2,9 @@
 // (DESIGN §2, §6.1 LOBBY, §8.1). Implements the handler interface consumed by server/net.js.
 //
 // Rules (the choices where DESIGN is silent are marked ▸):
+//   * Local room cleanup (2026-10-12): no connected human players → dispose immediately, in lobby or match,
+//     solo or co-op. Bots/spectators do not keep rooms alive. This takes precedence over the upstream grace/resume
+//     policy below; an offline player's seat remains resumable only while another human player stays online.
 //   * Rooms are keyed by 4-letter codes from an unambiguous alphabet (no I/O, letters only). Join codes are
 //     case-insensitive.
 //   * 'solo' rooms hold exactly one human and never bots. 'coop' rooms have 4 seats (humans + AI bots).
@@ -105,6 +108,7 @@ import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
 import { getData as defaultGetData, lookup } from './data.js';
 import { Match as DefaultMatch } from './match/Match.js';
 import { KITTED_CHARS } from './sim/content/kits/index.js';
+import { Matchmaking } from './matchmaking.js';
 
 /** Room code alphabet: uppercase letters without I and O (and no digits, so no 0/1). */
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -174,6 +178,9 @@ export class Room {
     this.code = code;
     this.mode = mode;
     this.difficulty = difficulty;
+    this.isPublic = true;
+    this.directoryId = randomBytes(12).toString('hex');
+    this.number = 0;
     /**
      * 「AI 队友最后选择」 (room.setAiPicksLast, GitHub #338; co-op only, off by default): the match's strategy and 机变 drafts
      * put every human seat before every AI seat (Match opts.aiPicksLast). Kept across the room's matches.
@@ -228,6 +235,7 @@ export class Room {
       hostId: this.hostId,
       mode: this.mode,
       difficulty: this.difficulty,
+      isPublic: this.isPublic,
       aiPicksLast: this.aiPicksLast,
       inMatch: !!this.match,
       seats: this.seats.map((s) => (s
@@ -261,6 +269,8 @@ export class Lobby {
     this.opts = { ...LOBBY_DEFAULTS, ...options };
     /** @type {Map<string, Room>} */
     this.rooms = new Map();
+    this.nextRoomNumber = 1;
+    this.matchmaking = new Matchmaking(this);
     /** @type {Map<string, NodeJS.Timeout>} lobby grace timers by playerId */
     this.graceTimers = new Map();
     /** @type {Map<string, NodeJS.Timeout>} deferred (coalesced) resyncs by playerId */
@@ -335,6 +345,10 @@ export class Lobby {
     switch (msg.t) {
       case 'room.create': return this.create(session, msg);
       case 'room.join': return this.join(session, msg);
+      case 'room.enter': return this.enterPublic(session, msg);
+      case 'room.setPublic': return this.setPublic(session, msg);
+      case 'match.start': return this.matchmaking.start(session, msg.difficulty);
+      case 'match.cancel': return this.matchmaking.cancel(session);
       case 'room.leave': return this.leave(session);
       case 'room.ready': return this.ready(session, msg);
       case 'room.setDifficulty': return this.setDifficulty(session, msg);
@@ -358,6 +372,7 @@ export class Lobby {
 
   /** The session's socket closed. @param {import('./net.js').Session} session */
   onDisconnect(session) {
+    this.matchmaking.cancel(session, 'disconnected');
     this.clearResync(session.playerId); // the next resume resyncs immediately
     const room = this.roomOf(session);
     // a solo run may be resumed within singleReconnectTime (24 h); everything else keeps the registry's window
@@ -366,6 +381,7 @@ export class Lobby {
     const player = room.seatOf(session.playerId);
     const seat = player || room.spectatorOf(session.playerId);
     seat.connected = false;
+    if (this.removeIfOffline(room)) return;
     // a spectator's seat is kept like a player's (nothing to tell the match: it plays no field)
     if (room.match) { if (player) this.callMatch(room, 'onDisconnect', session.playerId); } else this.startGrace(room, seat);
     this.broadcastState(room);
@@ -373,6 +389,7 @@ export class Lobby {
 
   /** The session's reconnect window elapsed (already removed from the registry). */
   onExpire(session) {
+    this.matchmaking.cancel(session, 'expired');
     session.notice = null;
     session.pendingResult = null;
     this.clearResync(session.playerId);
@@ -387,6 +404,7 @@ export class Lobby {
    * @param {string} [reason]
    */
   shutdown(reason = 'shutdown') {
+    this.matchmaking.shutdown();
     for (const room of [...this.rooms.values()]) this.disposeRoom(room, reason);
     for (const t of this.graceTimers.values()) clearTimeout(t);
     this.graceTimers.clear();
@@ -415,6 +433,8 @@ export class Lobby {
     if (!code) return fail(ERR.INTERNAL, 'no room code available');
     if (cur) this.removeMember(cur, session.playerId);
     const room = new Room(code, mode, difficulty, this.now());
+    this.matchmaking.cancel(session);
+    room.number = this.nextRoomNumber++;
     room.ownerKey = key;
     room.seats[0] = this.humanSeat(0, session);
     room.hostId = session.playerId;
@@ -439,6 +459,7 @@ export class Lobby {
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
     const idx = room.freeSeat();
     if (idx < 0) return fail(ERR.ROOM_FULL);
+    this.matchmaking.cancel(session);
     if (cur) this.removeMember(cur, session.playerId);
     room.seats[idx] = this.humanSeat(idx, session);
     session.roomCode = room.code;
@@ -453,6 +474,23 @@ export class Lobby {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
     this.removeMember(room, session.playerId);
+    return OK;
+  }
+
+  /** Directory identifiers never grant access to a private room, even from a stale directory snapshot. */
+  enterPublic(session, { directoryId, spectate }) {
+    const room = [...this.rooms.values()].find(r => !r.disposed && r.directoryId === directoryId && r.isPublic);
+    if (!room) return fail(ERR.ROOM_NOT_FOUND);
+    return spectate ? this.spectate(session, { code: room.code }) : this.join(session, { code: room.code });
+  }
+
+  /** A host can hide the room without removing current members or disabling invitations by code. */
+  setPublic(session, { on }) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    room.isPublic = on;
+    this.broadcastState(room);
     return OK;
   }
 
@@ -473,6 +511,7 @@ export class Lobby {
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
     if (room.spectators.length >= MAX_SPECTATORS) return fail(ERR.ROOM_FULL, 'no free spectator seat');
+    this.matchmaking.cancel(session);
     if (cur) this.removeMember(cur, session.playerId);
     room.spectators.push({ playerId: session.playerId, name: session.name, connected: session.connected });
     session.roomCode = room.code;
@@ -991,6 +1030,14 @@ export class Lobby {
     };
   }
 
+  /** Remove a room as soon as no human player is online; AI and spectator seats do not count. */
+  removeIfOffline(room) {
+    if (room.disposed) return true;
+    if (room.activeHumans().some(s => s.connected)) return false;
+    this.disposeRoom(room, 'empty');
+    return true;
+  }
+
   /**
    * Remove a human from a room permanently (leave, grace timeout, expiry, switching rooms).
    * In LOBBY the seat is freed; during a match it is marked departed and match.onLeave is called.
@@ -1013,9 +1060,9 @@ export class Lobby {
       room.seats[seat.seat] = null;
     }
     if (room.disposed) return; // onLeave may have ended the match and emptied the room
+    if (this.removeIfOffline(room)) return;
     if (room.hostId === playerId) this.migrateHost(room);
-    if (room.activeHumans().length === 0) this.disposeRoom(room, 'empty');
-    else this.broadcastState(room);
+    this.broadcastState(room);
   }
 
   /**
@@ -1081,19 +1128,23 @@ export class Lobby {
     for (const s of room.seats) {
       if (!s || s.isBot) continue;
       this.clearGrace(s.playerId);
+      this.clearResync(s.playerId);
       const session = this.registry.byId(s.playerId);
       if (!session || session.roomCode !== room.code) continue;
       session.roomCode = null;
-      if (s.left || reason === 'empty') continue;
+      session.resumeWindowMs = null;
+      if (s.left) continue;
       if (session.connected) sendSession(session, { t: 'room.closed', reason });
       else session.notice = reason;
     }
     // spectators did not leave: they are told whatever closed the room (its last human leaving included)
     for (const s of room.spectators) {
       this.clearGrace(s.playerId);
+      this.clearResync(s.playerId);
       const session = this.registry.byId(s.playerId);
       if (!session || session.roomCode !== room.code) continue;
       session.roomCode = null;
+      session.resumeWindowMs = null;
       if (session.connected) sendSession(session, { t: 'room.closed', reason });
       else session.notice = reason;
     }
@@ -1127,6 +1178,7 @@ export class Lobby {
     if (room.disposed) return;
     const data = encode(room.toState());
     for (const session of this.memberSessions(room)) sendRaw(session.ws, data);
+    this.matchmaking.drain();
   }
 
   sendState(room, session) {

@@ -996,7 +996,13 @@ describe('websocket lobby', () => {
       }
       return pick([{ t: 'hello', name: pick(['Re', '', 'x'.repeat(20)]) }, { t: 'ping', c: pick([1, 'x']) }, { t: pick(['nope', '__proto__', 'toString']) }, { t: 'room.join', code: pick(junk) }]);
     };
-    const okCounts = {};
+    // Exercise a valid briefing first: random disconnects may now destroy a room before it reaches infoReady.
+    await createRoom(clients[0]);
+    await expectOk(clients[0], { t: 'room.addBot' });
+    await expectOk(clients[0], { t: 'room.start' });
+    await expectOk(clients[0], { t: 'g.infoReady' });
+    await expectOk(clients[0], { t: 'room.leave' });
+    const okCounts = { 'g.infoReady': 1 };
     for (let i = 0; i < 500; i++) {
       const k = Math.floor(rnd() * clients.length);
       let c = clients[k];
@@ -1021,6 +1027,7 @@ describe('websocket lobby', () => {
     for (const room of srv.lobby.rooms.values()) {
       const humans = room.activeHumans();
       assert.ok(humans.length >= 1, `room ${room.code} has no humans`);
+      assert.ok(humans.some(h => h.connected), `room ${room.code} has no online humans`);
       assert.ok(humans.some((h) => h.playerId === room.hostId), `room ${room.code} host is not an active human`);
       if (room.mode === 'solo') assert.ok(room.seats.filter(Boolean).length === 1);
       room.seats.forEach((s, i) => { if (s) assert.equal(s.seat, i); });
@@ -1311,7 +1318,10 @@ describe('lobby timers and match interface', () => {
 
   test('repeated hellos during a match coalesce into at most one match resync per window', async () => {
     const host = await pool.player('Host');
-    await createRoom(host, 'solo', 'NORMAL');
+    const st = await createRoom(host, 'coop', 'NORMAL');
+    const keeper = await pool.player('Keeper');
+    await joinRoom(keeper, st.code);
+    await expectOk(keeper, { t: 'room.ready', ready: true });
     RecordingMatch.instances.length = 0;
     await expectOk(host, { t: 'room.start' });
     await host.waitFor('m.private');
@@ -1367,7 +1377,7 @@ describe('lobby timers and match interface', () => {
     assert.equal(w.resumed, false);
     assert.notEqual(w.playerId, guest.id);
 
-    // host drops too and never returns → room disposed after the window
+    // the last online host drops too → room disposed immediately
     await host.terminate();
     await delay(WINDOW + 700);
     assert.ok(m.calls.some((c) => c[0] === 'dispose'));
@@ -1399,11 +1409,11 @@ describe('lobby timers and match interface', () => {
 });
 
 // ---------------------------------------------------------------------------------------------------
-// Solo runs: 下半 solo has no prep / 机变 timer and may be resumed within singleReconnectTime (24 h, research 01 §1,
-// 06 §17); only co-op sessions expire after the reconnect window (real Match: the untimed solo match waits).
+// Local cleanup policy: a solo run is removed immediately on disconnect. The player's identity still uses the
+// ordinary reconnect window; a room with another online human retains its existing reconnect behavior.
 // ---------------------------------------------------------------------------------------------------
 
-describe('solo resume window', () => {
+describe('empty room cleanup and session windows', () => {
   const WINDOW = 300;       // stands in for the 10-minute reconnect window
   const SOLO_WINDOW = 1500; // stands in for singleReconnectTime (24 h)
   let srv;
@@ -1425,7 +1435,7 @@ describe('solo resume window', () => {
   });
   const connect = async () => { const c = await TestClient.connect(url); open.push(c); return c; };
 
-  test('solo: resumable past the reconnect window, the match waits; expires only after the solo window', async () => {
+  test('solo: disconnect removes the room and match immediately; the identity can resume outside it', async () => {
     const a = await connect();
     const w = await a.hello('Solo');
     a.id = w.playerId;
@@ -1435,23 +1445,19 @@ describe('solo resume window', () => {
     const room = srv.lobby.getRoom(st.code);
     const match = room.match;
     await a.terminate();
-    await delay(WINDOW + 600); // several sweeps past the co-op window
-    assert.equal(room.match, match, 'the solo match still runs');
-    assert.equal(match.players.get(a.id).left, false, 'not treated as a quit');
+    for (let i = 0; i < 20 && !room.disposed; i++) await delay(5);
+    assert.equal(srv.lobby.getRoom(st.code), null, 'removed without waiting for lobby grace or session expiry');
+    assert.equal(match.disposed, true, 'the running match releases its resources');
 
     const b = await connect();
     const w2 = await b.hello('Solo', w.token);
     assert.equal(w2.resumed, true);
     assert.equal(w2.playerId, a.id);
-    assert.equal((await b.waitFor('room.state')).inMatch, true);
-    await b.waitFor('m.public', (p) => p.phase === PHASE.INFO_CHECK);
-    await b.waitFor('m.private');
+    assert.equal((await b.waitFor('room.closed')).reason, 'empty');
+    assert.equal(srv.registry.byId(a.id).roomCode, null);
 
-    // a reconnect re-evaluates the window: the extension is set at every drop, and still ends after the solo window
     await b.terminate();
-    await delay(SOLO_WINDOW + 700);
-    assert.equal(match.ended, true, 'expiry after the solo window → onLeave → abandoned');
-    assert.equal(srv.lobby.getRoom(st.code), null, 'empty room disposed');
+    await delay(WINDOW + 700);
     const c = await connect();
     const w3 = await c.hello('Solo', w.token);
     assert.equal(w3.resumed, false);
@@ -1469,11 +1475,12 @@ describe('solo resume window', () => {
     const match = srv.lobby.getRoom(st.code).match;
     await a.terminate();
     await delay(WINDOW + 600);
-    assert.equal(match.players.get(a.id).left, true, 'co-op: the window expired → onLeave');
+    assert.equal(match.disposed, true, 'bots cannot retain an offline co-op room');
+    assert.equal(srv.lobby.getRoom(st.code), null);
     const b = await connect();
     assert.equal((await b.hello('Coop', w.token)).resumed, false);
 
-    // solo room without a running match: no extension (the lobby grace frees the seat anyway)
+    // solo room without a running match: no extension; the empty room is removed immediately
     const s = await connect();
     const ws = await s.hello('Idle');
     s.id = ws.playerId;
@@ -1567,8 +1574,12 @@ describe('match result replay', () => {
   test('reloading on the result screen replays it until the player acts in the room; a new match clears it', async () => {
     ReplayMatch.unicast = true;
     const host = await pool.player('Solo');
-    await createRoom(host, 'solo', 'NORMAL');
+    const st = await createRoom(host, 'coop', 'NORMAL');
+    const keeper = await pool.player('Keeper');
+    await joinRoom(keeper, st.code);
+    await expectOk(keeper, { t: 'room.ready', ready: true });
     await expectOk(host, { t: 'room.start' });
+    await expectOk(keeper, { t: 'g.infoReady' });
     await expectOk(host, { t: 'g.infoReady' });
     await host.waitFor('m.result');
     await host.waitFor('room.state', (s) => !s.inMatch);
@@ -1591,10 +1602,13 @@ describe('match result replay', () => {
     await r2.expectNone('m.public', () => true, 50);
 
     // a new match replaces any pending replay with the live match state
+    await expectOk(keeper, { t: 'room.ready', ready: true });
     await expectOk(r2, { t: 'room.start' });
+    await expectOk(keeper, { t: 'g.infoReady' });
     await expectOk(r2, { t: 'g.infoReady' });
     await r2.waitFor('m.result');
     await r2.waitFor('room.state', (s) => !s.inMatch);
+    await expectOk(keeper, { t: 'room.ready', ready: true });
     await expectOk(r2, { t: 'room.start' });
     await r2.waitFor('m.public', (p) => p.phase === PHASE.INFO_CHECK);
     await r2.terminate();
@@ -1629,8 +1643,13 @@ describe('match result replay', () => {
       const a = await TestClient.connect(url);
       const w = await a.hello('A');
       a.id = w.playerId;
-      await createRoom(a, 'coop', 'FUNNY');
-      for (let i = 0; i < 3; i++) await expectOk(a, { t: 'room.addBot' });
+      const st = await createRoom(a, 'coop', 'FUNNY');
+      const keeper = await TestClient.connect(url);
+      const kw = await keeper.hello('Keeper');
+      keeper.id = kw.playerId;
+      await joinRoom(keeper, st.code);
+      await expectOk(keeper, { t: 'room.ready', ready: true });
+      for (let i = 0; i < 2; i++) await expectOk(a, { t: 'room.addBot' });
       await expectOk(a, { t: 'room.start' });
       await a.waitFor('m.public', (p) => p.phase === PHASE.INFO_CHECK);
       const room = real.lobby.getRoom([...real.lobby.rooms.keys()][0]);
@@ -1648,6 +1667,7 @@ describe('match result replay', () => {
       const pub = b.log.find((x) => x.t === 'm.public');
       assert.equal(pub.phase, PHASE.RESULT);
       await b.terminate();
+      await keeper.terminate();
     } finally {
       for (const m of matches) m.dispose?.();
       await real.close();
@@ -1691,18 +1711,17 @@ describe('per-network limits', () => {
     c.token = w.token;
     return c;
   }
-  /** The orphan loop: create a co-op room with AI, start it, walk away. Returns the room.start reply. */
+  /** Keep the socket connected to exercise concurrent room/match limits; disconnected empty rooms are removed. */
   async function orphan(ip, i) {
     const c = await netPlayer(`orphan${i}`, ip);
     const r = await c.request({ t: 'room.create', mode: 'coop', difficulty: 'FUNNY' });
     if (r.t !== 'ok') { await c.terminate(); return { create: r }; }
     await expectOk(c, { t: 'room.addBot' });
     const start = await c.request({ t: 'room.start' });
-    await c.terminate();
     return { create: r, start };
   }
 
-  test('a socket loop cannot keep more than maxMatchesPerAddr unattended matches or maxRoomsPerAddr rooms', async () => {
+  test('connected clients cannot keep more than maxMatchesPerAddr matches or maxRoomsPerAddr rooms', async () => {
     const A = '203.0.113.7';
     const keeper = await netPlayer('keeper', A); // stays connected in its running match
     await createRoom(keeper, 'solo', 'FUNNY');

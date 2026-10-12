@@ -7,6 +7,30 @@ Part of [DESIGN.md](../DESIGN.md) (the index; section numbers are global).
 Transport: one WebSocket per tab at `/ws`, JSON text frames `{ t: '<type>', ...payload }`. Client requests may carry `rid` (request id); the server's direct reply echoes `rid` (`ok` or `error`). Server pushes have no `rid`. Max frame 64 KB inbound; rate limit 40 msgs/s per connection (excess dropped with `error RATE`).
 
 ### 8.1 Session & lobby
+Local server-lobby extension (2026-10-12): `room.state.isPublic` defaults to true. Host-only `room.setPublic {on}`
+changes visibility without removing members or resetting ready state. `/api/lobby` lists public rooms only, with a
+stable sequential display `number` (`0001`, `0002`, ...; allocated per server lifetime) and a random `directoryId`;
+it never returns the four-character join `code`. `room.enter {directoryId, spectate:boolean}` resolves the current
+room and rechecks visibility before joining/spectating. Hidden rooms remain accessible through `room.join {code}` /
+`room.spectate {code}` and invite links. Public numbers are not join keys. Overview totals include private rooms;
+list/filter counts include only public entries.
+
+Local immediate-empty cleanup (2026-10-12): the last connected human player leaving or disconnecting disposes the
+room and its running match immediately, including solo rooms. Bots and spectators never keep it alive; spectators
+receive `room.closed {reason:'empty'}` and disconnected members receive it on their next resume. Member room links,
+grace/resync timers and match resources are cleared. This local rule takes precedence over the upstream reconnect
+windows below: an offline seat is kept only while another human player remains online in that room.
+
+`match.start {difficulty}` (heavy bucket) starts a server-owned FIFO search outside a room. It immediately joins a
+public co-op lobby of exactly that difficulty with a free player seat and at least one connected human. Otherwise,
+it waits up to 30 real seconds, rechecking when room state changes and on a bounded timer. At the deadline it tries
+joining once more, then creates a public co-op room through the normal room/rate limits. Several waiting players
+fill the new room in order, without exceeding four seats. `match.cancel` stops a search; disconnect, expiry,
+manual room entry and shutdown also cancel it. Repeated starts preserve the original deadline.
+`match.state {searching:true, difficulty, deadlineAt, waitMs}` reports the search; completion/cancellation sends
+`{searching:false, reason, error?}`. Assignment uses the existing `room.state`; failed automatic creation reports
+its existing error code. Search deadlines are independent of game speed. No simulation or golden result changes.
+
 C→S: `hello {name, token?, version}` · `room.create {mode:'solo'|'coop', difficulty}` · `room.join {code}` · `room.leave` · `room.ready {ready}` · `room.setDifficulty {difficulty}` (host) · `room.setAiPicksLast {on}` (host, co-op, before the match — `ROOM_STARTED` during it, `BAD_TARGET` in a solo room; un-readies the other humans like a difficulty change; the match takes it as `opts.aiPicksLast`: humans draft before AI seats, off by default, no extra random draw) · `room.addBot` / `room.removeBot {seat}` (host) · `room.kick {seat, playerId}` (host, before the match: another human leaves the room and gets `room.closed {reason:'kicked'}`; may join again; `playerId` = the player the host confirmed, a seat that changed hands meanwhile → `BAD_TARGET`) · `room.start` (host) · `room.loadout {entries, ops?}` (§16: any time in the lobby / room and during INFO_CHECK, then `WRONG_PHASE`; heavy rate-limit bucket; the match exposes it as `m.private.loadout`; `ops` — 0.2.2 — the per-operator 潜能 / 练度 `{ [charId]: { potential?: 1–6, cultivate?: 0–3 } }` of the 干员调配 roster and the 自选 owned pool, ≤ 256, checked strictly with the entries, `m.private.ops`; absent = none set: every operator 潜能 6, 精英2 Lv.60) · `room.ownership {notOwned}` (0.2.0 补位, the 干员持有 tab: the base chess ids marked as not owned — ≤ 160 ids, kept leniently: anything but a droppable NORMAL chess is dropped; stored on the session and the seat, a match takes the seat's list when it starts and never changes it — during a match `ROOM_STARTED` 'stored for the next match'; heavy bucket; the match exposes it as `m.private.standIns`) · `room.diy {picks}` (0.2.0 自选编队: `{ [slotBaseId]: { charId, skillIndex?, uniEquipId? } | null }` for the four DIY slots — ≤ 8 entries, kept leniently: shared/protocol.js `checkDiyPicks` drops an illegal pick (an operator without a kit, another tier's prototype, a prototype off its locked skill, a module of another game mode (集成战略 / 生息演算), an owned operator's second slot, the same operator twice in a tier, an unknown slot), only malformed picks are `BAD_MSG`; stored on the session and the seat like the not-owned list, a match takes the seat's picks when it starts — during a match `ROOM_STARTED` 'stored for the next match'; heavy bucket; the match exposes them as `m.private.diy`) · `ping {c}`
 S→C: `welcome {playerId, token, name, serverNow}` · `room.state {code, hostId, mode, difficulty, aiPicksLast, seats:[{seat, playerId, name, isBot, ready, connected}|null ×4]}` · `room.closed {reason}` · `pong {c, s}` · `error {rid?, code, msg}` · `ok {rid}`
 
