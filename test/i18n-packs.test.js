@@ -177,27 +177,6 @@ test('manifest: common fields, type fields, app ranges; English is a pack like a
   assert.ok(en.manifest.authors.some((a) => a.includes('@YuriRestia')), 'PR #70 credited');
 });
 
-test('manifest: four-part app versions preserve and compare the revision in a generated language pack', () => {
-  const app = packTemplate('qaa', { msgids: [] }).json._meta.app;
-  assert.equal(isVersionRange(app), true, 'the generated app range must be accepted by the pack loader');
-  assert.equal(appVersionMatches(app, APP_VERSION), true);
-  assert.equal(isVersionRange('>=0.2.4.1 <0.2.5'), true);
-  assert.equal(isVersionRange('0.2.4.1.2'), false);
-  assert.equal(isVersionRange('0.2.x.1'), false);
-  for (const [range, version, expected] of [
-    ['>=0.2.4.1', '0.2.4', false],
-    ['>=0.2.4.1', '0.2.4.0', false],
-    ['>=0.2.4.1', 'v0.2.4.1-dev', true],
-    ['>=0.2.4.2', '0.2.4.10', true],
-    ['0.2.4.1', '0.2.4.2', false],
-    ['0.2.4', '0.2.4.0', true],
-    ['0.2.x', '0.2.4.1', true],
-    ['^0.2.4.1', '0.2.5', true],
-    ['~0.2.4.1', '0.3.0', false],
-    ['>=0.2.4.1 <0.2.5', '0.2.5', false],
-  ]) assert.equal(appVersionMatches(range, version), expected, `${version} in ${range}`);
-});
-
 test('manifest: machineTranslated — a boolean, carried into the index entry like complete and into the client\'s registry (from the index or the pack\'s own _meta); the shipped zh-TW pack has it', () => {
   const ctx = { id: 'qam', type: 'lang', lang: 'qam', app: '0.2.0' };
   const on = normalizeManifest({ name: 'Qam', machineTranslated: true }, ctx);

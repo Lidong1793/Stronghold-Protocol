@@ -61,15 +61,6 @@ const H = sha('x');
 const goodUpdate = (patch = {}) => JSON.stringify({ format: 1, app: '0.2.1', from: ['0.2.0'], count: 1, bytes: 1,
   files: { 'server/a.js': { size: 1, sha256: H } }, removed: [{ path: 'server/old.js', sha256: [H] }], ...patch });
 
-test('four-part revision releases pass manifest and update validation', () => {
-  const m = parseManifest(JSON.stringify({ format: 1, app: '0.2.4.1', files: { 'server/a.js': dg('x') } }));
-  assert.equal(m.app, '0.2.4.1');
-  const u = parseUpdate(goodUpdate({ app: '0.2.4.1', from: ['0.2.4', '0.2.4.0'] }));
-  assert.equal(u.app, '0.2.4.1');
-  assert.deepEqual(u.from, ['0.2.4', '0.2.4.0']);
-  assert.throws(() => parseUpdate(goodUpdate({ app: '0.2.4.1.2' })), /version/);
-});
-
 test('UPDATE.json is read strictly: one bad entry and the whole file is refused', () => {
   const u = parseUpdate(goodUpdate());
   assert.equal(u.app, '0.2.1');

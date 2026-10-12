@@ -112,7 +112,7 @@ export function removalProblem(rel) {
 }
 
 const HEX64 = /^[0-9a-f]{64}$/;
-const VERSION = /^\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?$/;
+const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const isCount = (v) => Number.isSafeInteger(v) && v >= 0;
 

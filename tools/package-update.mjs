@@ -133,16 +133,16 @@ export function readZip(zipPath, onFile) {
   }
 }
 
-/** -1 / 0 / 1 for two x.y.z[.revision][-pre] versions (a pre-release sorts before its release). */
+/** -1 / 0 / 1 for two x.y.z[-pre] versions (a pre-release sorts before its release). */
 export function compareVersions(a, b) {
   const parse = (v) => {
-    const m = /^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-(.+))?$/.exec(String(v));
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/.exec(String(v));
     if (!m) throw new Error(`not a version: ${v}`);
-    return { n: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4] ?? 0)], pre: m[5] ?? null };
+    return { n: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ?? null };
   };
   const x = parse(a);
   const y = parse(b);
-  for (let i = 0; i < 4; i++) if (x.n[i] !== y.n[i]) return x.n[i] < y.n[i] ? -1 : 1;
+  for (let i = 0; i < 3; i++) if (x.n[i] !== y.n[i]) return x.n[i] < y.n[i] ? -1 : 1;
   if (x.pre === y.pre) return 0;
   if (x.pre === null) return 1;
   if (y.pre === null) return -1;
