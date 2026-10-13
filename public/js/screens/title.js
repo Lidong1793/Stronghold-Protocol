@@ -26,6 +26,7 @@ import { t, N_ } from '../../../shared/i18n.js';
 import { scriptOf } from '../../../shared/i18nPacks.js';
 import { GIcon } from '../ui/gameComponents.js';
 import { SettingsModal } from '../ui/settings.js';
+import { ResourcePreload } from '../ui/resourcePreload.js';
 
 // Same character classes as server/net.js sanitizeName (control, zero-width, bidi, BOM), so a name
 // the client accepts is never rejected by the server's hello validation.
@@ -291,11 +292,14 @@ export function TitleScreen() {
       <${ResumeMatchButton} />
       <${PwaInstallButton} />
       <span>${t('非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有')}</span>
-      <span class="title-foot__meta">
-        <a class="title-repo" href="https://github.com/sganggs/Stronghold-Protocol" target="_blank" rel="noopener noreferrer">${t('项目仓库')}</a>
-        <${MicroLabel}>v${APP_VERSION} · WEB SIMULATION<//>
-        ${DEV_BUILD ? html`<span class="title-dev" role="note">${t('开发版 · 不稳定，请勿用于公开服务器')}</span>` : null}
-      </span>
+      <div class="title-foot__right">
+        <${ResourcePreload} />
+        <span class="title-foot__meta">
+          <a class="title-repo" href="https://github.com/sganggs/Stronghold-Protocol" target="_blank" rel="noopener noreferrer">${t('项目仓库')}</a>
+          <${MicroLabel}>v${APP_VERSION} · WEB SIMULATION<//>
+          ${DEV_BUILD ? html`<span class="title-dev" role="note">${t('开发版 · 不稳定，请勿用于公开服务器')}</span>` : null}
+        </span>
+      </div>
     </footer>
   </div>`;
 }

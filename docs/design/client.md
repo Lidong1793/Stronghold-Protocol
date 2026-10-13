@@ -4,6 +4,16 @@ Part of [DESIGN.md](../DESIGN.md) (the index; section numbers are global).
 
 ## 9. Client rendering contract (public/js/render)
 
+Local title resource preload (2026-10-13): the bottom-right resource control downloads the installed manifest's
+game art, local scene/FX dependencies, fonts, audio, match data and renderer libraries into the ordinary browser
+HTTP cache. Four bounded workers [ASSUMED tuning] read raw bodies without decoding the full catalogue. Progress
+counts confirmed files; pause/resume and failed-file retry retain success for the page. Leaving the title pauses
+network work. Full completion is saved in same-origin localStorage and restored on reopening; app-version or manifest
+content changes invalidate it. Restored completion is labelled as history. Check-and-refill reads the URLs through
+ordinary HTTP caching rather than assuming that a completion record prevents cache eviction. Storage failure is shown.
+An absent optional local manifest is skipped; files listed by either manifest that are missing remain errors. The cache is reusable
+on HTTP hosts, subject to normal freshness and browser eviction (ASSETS.md, "Browser resource preload").
+
 Local lobby matching (2026-10-12): the directory opens a matching screen with the existing protocol header and
 difficulty cards. Start/cancel use `match.start` / `match.cancel`; the server owns the 30-second deadline and room
 assignment. The client displays a server-clock countdown, locks difficulty while searching and cancels on leaving
