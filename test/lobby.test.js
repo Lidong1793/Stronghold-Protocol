@@ -470,10 +470,10 @@ describe('websocket lobby', () => {
   const cap = captureLog();
 
   before(async () => {
-    srv = await startServer({ port: 0, host: '127.0.0.1', log: cap.log, MatchClass: Match });
+    srv = await startServer({ port: 0, host: '127.0.0.1', log: cap.log, MatchClass: Match, emptyRoomMs: 100 });
     pool = clientPool(() => `ws://127.0.0.1:${srv.port}/ws`);
   });
-  afterEach(async () => { await pool.closeAll(); });
+  afterEach(async () => { await pool.closeAll(); srv.lobby.shutdown(); });
   after(async () => {
     await srv?.close();
     assert.deepEqual(cap.errors, [], 'no server errors logged');
@@ -634,8 +634,9 @@ describe('websocket lobby', () => {
     assert.notEqual(own.code, st.code);
     await host.waitFor('room.state', (s) => s.seats[1] === null);
 
-    // last human leaving disposes the room
+    // last human leaving starts the bounded retention period
     await expectOk(guest, { t: 'room.leave' });
+    await delay(150);
     await expectError(host, { t: 'room.join', code: own.code }, ERR.ROOM_NOT_FOUND);
   });
 
@@ -810,7 +811,7 @@ describe('websocket lobby', () => {
     await expectError(host, { t: 'room.addBot' }, ERR.NOT_IN_ROOM);
   });
 
-  test('add / remove AI; a room with only AI is disposed', async () => {
+  test('add / remove AI; a room with only AI is disposed after the retention deadline', async () => {
     const host = await pool.player('Host');
     const st = await createRoom(host);
     await expectOk(host, { t: 'room.addBot' });
@@ -834,6 +835,7 @@ describe('websocket lobby', () => {
 
     await expectOk(host, { t: 'room.leave' });
     const probe = await pool.player('Probe');
+    await delay(150);
     await expectError(probe, { t: 'room.join', code: st.code }, ERR.ROOM_NOT_FOUND);
   });
 
@@ -1009,12 +1011,13 @@ describe('websocket lobby', () => {
     const back = await host.waitFor('room.state', (s) => !s.inMatch);
     assert.equal(seatOf(back, guest.id), null, 'departed seat freed');
 
-    // host leaving a running match with nobody else disposes the room
+    // host leaving a running match with nobody else starts the retention period
     host.clearInbox();
     await expectOk(host, { t: 'room.start' });
     await host.waitFor('m.public', (m) => m.phase === 'INFO_CHECK');
     await expectOk(host, { t: 'room.leave' });
     const probe = await pool.player('Probe');
+    await delay(150);
     await expectError(probe, { t: 'room.join', code: st.code }, ERR.ROOM_NOT_FOUND);
   });
 
@@ -1081,10 +1084,10 @@ describe('websocket lobby', () => {
     const seen = new Set();
     for (const room of srv.lobby.rooms.values()) {
       const humans = room.activeHumans();
-      assert.ok(humans.length >= 1, `room ${room.code} has no humans`);
-      assert.ok(humans.some(h => h.connected), `room ${room.code} has no online humans`);
-      assert.ok(humans.some((h) => h.playerId === room.hostId), `room ${room.code} host is not an active human`);
-      if (room.mode === 'solo') assert.ok(room.seats.filter(Boolean).length === 1);
+      assert.equal(room.offlineDeadlineAt !== null, !room.hasOnlineHumans());
+      if (humans.length) assert.ok(humans.some((h) => h.playerId === room.hostId), `room ${room.code} host is not an active human`);
+      else assert.equal(room.hostId, null);
+      if (room.mode === 'solo') assert.ok(room.seats.filter(Boolean).length <= 1);
       room.seats.forEach((s, i) => { if (s) assert.equal(s.seat, i); });
       for (const h of humans) {
         assert.ok(!seen.has(h.playerId), 'player seated twice');
@@ -1221,7 +1224,7 @@ describe('lobby timers and match interface', () => {
   before(async () => {
     srv = await startServer({
       port: 0, host: '127.0.0.1', log: cap.log, MatchClass: RecordingMatch, seedFn: () => 123456789,
-      lobbyGraceMs: GRACE, reconnectWindowMs: WINDOW,
+      lobbyGraceMs: GRACE, reconnectWindowMs: WINDOW, emptyRoomMs: 100,
     });
     pool = clientPool(() => `ws://127.0.0.1:${srv.port}/ws`);
   });
@@ -1432,7 +1435,7 @@ describe('lobby timers and match interface', () => {
     assert.equal(w.resumed, false);
     assert.notEqual(w.playerId, guest.id);
 
-    // the last online host drops too → room disposed immediately
+    // the last online host drops too → room disposed after the shortened retention deadline
     await host.terminate();
     await delay(WINDOW + 700);
     assert.ok(m.calls.some((c) => c[0] === 'dispose'));
@@ -1479,7 +1482,7 @@ describe('empty room cleanup and session windows', () => {
   before(async () => {
     srv = await startServer({
       port: 0, host: '127.0.0.1', log: cap.log, MatchClass: RealMatch, seedFn: () => 20260929,
-      reconnectWindowMs: WINDOW, soloReconnectWindowMs: SOLO_WINDOW, lobbyGraceMs: 200,
+      reconnectWindowMs: WINDOW, soloReconnectWindowMs: SOLO_WINDOW, lobbyGraceMs: 200, emptyRoomMs: 80,
     });
     url = `ws://127.0.0.1:${srv.port}/ws`;
   });
@@ -1490,7 +1493,7 @@ describe('empty room cleanup and session windows', () => {
   });
   const connect = async () => { const c = await TestClient.connect(url); open.push(c); return c; };
 
-  test('solo: disconnect removes the room and match immediately; the identity can resume outside it', async () => {
+  test('solo: retention expiry removes the match; the identity can resume outside it', async () => {
     const a = await connect();
     const w = await a.hello('Solo');
     a.id = w.playerId;
@@ -1501,7 +1504,7 @@ describe('empty room cleanup and session windows', () => {
     const match = room.match;
     await a.terminate();
     for (let i = 0; i < 20 && !room.disposed; i++) await delay(5);
-    assert.equal(srv.lobby.getRoom(st.code), null, 'removed without waiting for lobby grace or session expiry');
+    assert.equal(srv.lobby.getRoom(st.code), null, 'removed at the shortened empty-room deadline');
     assert.equal(match.disposed, true, 'the running match releases its resources');
 
     const b = await connect();
@@ -1535,7 +1538,7 @@ describe('empty room cleanup and session windows', () => {
     const b = await connect();
     assert.equal((await b.hello('Coop', w.token)).resumed, false);
 
-    // solo room without a running match: no extension; the empty room is removed immediately
+    // solo room without a running match: no extension; cleanup still has a bounded deadline
     const s = await connect();
     const ws = await s.hello('Idle');
     s.id = ws.playerId;
@@ -1743,7 +1746,7 @@ describe('per-network limits', () => {
   before(async () => {
     srv = await startServer({
       port: 0, host: '127.0.0.1', log: cap.log, MatchClass: Match,
-      maxRoomsPerAddr: 3, maxMatchesPerAddr: 2, maxConnectionsPerAddr: 4,
+      maxRoomsPerAddr: 3, maxMatchesPerAddr: 2, maxConnectionsPerAddr: 4, emptyRoomMs: 100,
     });
     url = `ws://127.0.0.1:${srv.port}/ws`;
   });
@@ -1751,6 +1754,7 @@ describe('per-network limits', () => {
     await Promise.all([...open].map((c) => c.terminate().catch(() => {})));
     open.clear();
     await delay(20);
+    srv.lobby.shutdown();
   });
   after(async () => {
     await srv?.close();
@@ -1801,16 +1805,20 @@ describe('per-network limits', () => {
 
     // a match from A ends → capacity is back
     await expectOk(keeper, { t: 'g.leave' });
+    await delay(150); // retained empty rooms also count towards the network's room limit
     const again = await netPlayer('again', A);
     const st = await again.request({ t: 'room.create', mode: 'solo', difficulty: 'FUNNY' });
     assert.equal(st.t, 'ok', JSON.stringify(st));
     await expectOk(again, { t: 'room.start' });
   });
 
-  test('creating a room from your only room does not count the room being left', async () => {
+  test('retained empty rooms count towards the network limit when switching rooms', async () => {
     const B = '203.0.113.99';
     const c = await netPlayer('hopper', B);
-    for (let i = 0; i < 6; i++) await expectOk(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
+    for (let i = 0; i < 3; i++) await expectOk(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
+    await expectError(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' }, ERR.RATE);
+    await delay(150);
+    await expectOk(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
   });
 
   test('per-network socket cap is enforced at upgrade (429); other networks and local peers are unaffected', async () => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Lobby } from '../server/lobby.js';
+import { Lobby, LOBBY_DEFAULTS } from '../server/lobby.js';
 import { MATCH_WAIT_MS } from '../server/matchmaking.js';
 import { lobbyReport } from '../server/http/lobbyDirectory.js';
 import { ERR } from '../shared/constants.js';
@@ -31,8 +31,9 @@ function fixture(t, options = {}) {
 }
 
 for (const mode of ['solo', 'coop']) for (const running of [false, true]) {
-  test(`last human disconnect removes ${mode} ${running ? 'running' : 'waiting'} room immediately`, t => {
-    const { lobby, player, create, report } = fixture(t);
+  test(`last human disconnect retains ${mode} ${running ? 'running' : 'waiting'} room for exactly five minutes`, t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { lobby, player, create, report, advance } = fixture(t);
     const host = player(), room = create(host, 'NORMAL', mode);
     let watcher;
     if (mode === 'coop') {
@@ -47,6 +48,15 @@ for (const mode of ['solo', 'coop']) for (const running of [false, true]) {
     }
     host.connected = false;
     lobby.onDisconnect(host);
+    assert.equal(lobby.getRoom(room.code), room);
+    assert.equal(host.roomCode, room.code);
+    assert.equal(room.disposed, false);
+    assert.equal(report().roomCount, 1);
+    assert.equal(lobby.graceTimers.size, 0, 'lobby grace cannot evict the retained player');
+    assert.equal(disposals, 0);
+    advance(LOBBY_DEFAULTS.emptyRoomMs - 1); t.mock.timers.tick(LOBBY_DEFAULTS.emptyRoomMs - 1);
+    assert.equal(lobby.getRoom(room.code), room);
+    advance(1); t.mock.timers.tick(1);
     assert.equal(lobby.getRoom(room.code), null);
     assert.equal(room.disposed, true);
     assert.equal(host.roomCode, null);
@@ -65,7 +75,7 @@ for (const mode of ['solo', 'coop']) for (const running of [false, true]) {
 }
 
 for (const action of ['leave', 'disconnect']) {
-  test(`an offline teammate cannot retain a room after the last online human ${action}s`, t => {
+  test(`an offline teammate retains their seat after the last online human ${action}s`, t => {
     const { lobby, player, create } = fixture(t);
     const host = player(), guest = player(), room = create(host);
     lobby.join(guest, { code: room.code });
@@ -74,10 +84,14 @@ for (const action of ['leave', 'disconnect']) {
     assert.ok(lobby.graceTimers.has(guest.playerId));
     if (action === 'leave') lobby.leave(host);
     else { host.connected = false; lobby.onDisconnect(host); }
-    assert.equal(lobby.getRoom(room.code), null);
-    assert.equal(guest.roomCode, null);
-    assert.equal(guest.notice, 'empty');
+    assert.equal(lobby.getRoom(room.code), room);
+    assert.equal(guest.roomCode, room.code);
+    assert.ok(room.offlineDeadlineAt !== null);
     assert.equal(lobby.graceTimers.size, 0);
+    guest.connected = true; lobby.onHello(guest, { resumed: true, repeat: false });
+    assert.equal(lobby.roomOf(guest), room);
+    assert.equal(room.offlineDeadlineAt, null);
+    assert.equal(lobby.offlineTimers.size, 0);
   });
 }
 
@@ -95,7 +109,92 @@ test('a disconnected teammate resumes their seat while another human stays onlin
   assert.equal(guest.frames.at(-1).t, 'room.state');
 });
 
-test('real socket closure immediately removes a running bot room and closes its spectator', async t => {
+test('return cancels cleanup, the next absence gets five minutes, spectators cannot extend it', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { lobby, player, create, advance } = fixture(t);
+  const host = player(), watcher = player(), room = create(host);
+  host.connected = false; lobby.onDisconnect(host);
+  const firstDeadline = room.offlineDeadlineAt;
+  advance(60_000); t.mock.timers.tick(60_000);
+  lobby.spectate(watcher, { code: room.code });
+  lobby.onDisconnect(host); // repeated events cannot buy another five minutes
+  assert.equal(room.offlineDeadlineAt, firstDeadline);
+  host.connected = true; lobby.onHello(host, { resumed: true, repeat: false });
+  assert.equal(room.offlineDeadlineAt, null);
+  advance(240_000); t.mock.timers.tick(240_000);
+  assert.equal(lobby.getRoom(room.code), room, 'the old timer was cancelled');
+  host.connected = false; lobby.onDisconnect(host);
+  assert.equal(room.offlineDeadlineAt, firstDeadline + 300_000);
+  advance(300_000); t.mock.timers.tick(300_000);
+  assert.equal(lobby.getRoom(room.code), null);
+  assert.equal(lobby.offlineTimers.size, 0);
+});
+
+test('matching skips a retained waiting room even with bots and a connected spectator; return wakes the queue', t => {
+  const { lobby, player, create, advance } = fixture(t);
+  const host = player(), watcher = player(), seeker = player(), room = create(host);
+  lobby.addBot(host); lobby.spectate(watcher, { code: room.code });
+  host.connected = false; lobby.onDisconnect(host);
+  lobby.matchmaking.start(seeker, 'NORMAL');
+  advance(MATCH_WAIT_MS - 1);
+  assert.equal(seeker.roomCode, null);
+  assert.equal(lobby.getRoom(room.code), room);
+  host.connected = true; lobby.onHello(host, { resumed: true, repeat: false });
+  assert.equal(seeker.roomCode, room.code);
+  assert.equal(seeker.frames.at(-1).reason, 'joined');
+});
+
+test('retained offline rooms remain unavailable at the matching deadline; explicit departure and shutdown clean timers', t => {
+  const { lobby, player, create, advance } = fixture(t);
+  const host = player(), seeker = player(), room = create(host);
+  host.connected = false; lobby.onDisconnect(host);
+  lobby.matchmaking.start(seeker, 'NORMAL'); advance(MATCH_WAIT_MS);
+  assert.notEqual(seeker.roomCode, room.code);
+  assert.equal(seeker.frames.at(-1).reason, 'created');
+  lobby.leave(seeker);
+  assert.equal(lobby.offlineTimers.size, 2);
+  lobby.shutdown();
+  assert.equal(lobby.offlineTimers.size, 0);
+  assert.equal(lobby.rooms.size, 0);
+});
+
+test('match ending during an absence preserves the original deadline and the disconnected lobby seat', t => {
+  const { lobby, player, create, advance } = fixture(t);
+  const host = player(), room = create(host);
+  const match = { dispose() {} }, ctx = { live: true, ended: false, disposed: false, match, results: new Map() };
+  room.match = match; room.matchCtx = ctx;
+  host.connected = false; lobby.onDisconnect(host);
+  const deadline = room.offlineDeadlineAt;
+  advance(120_000); lobby.onMatchEnd(room, ctx, {});
+  assert.equal(room.offlineDeadlineAt, deadline);
+  assert.equal(lobby.graceTimers.size, 0);
+  assert.equal(host.roomCode, room.code);
+  assert.equal(lobby.getRoom(room.code), room);
+});
+
+for (const mode of ['solo', 'coop']) test(`real ${mode} refresh retains the same waiting room and seat`, async t => {
+  const srv = await startServer({ host: '127.0.0.1', port: 0, quiet: true, lobbyGraceMs: 40 });
+  const clients = [];
+  t.after(async () => { await Promise.all(clients.map(c => c.terminate())); await srv.close(); });
+  const connect = async token => {
+    const c = await TestClient.connect(srv.url.replace('http:', 'ws:') + '/ws'); clients.push(c);
+    c.welcome = await c.hello('Refresh', token); return c;
+  };
+  const host = await connect();
+  await host.request({ t: 'room.create', mode, difficulty: 'NORMAL' });
+  const state = await host.waitFor('room.state'), room = srv.lobby.getRoom(state.code);
+  await host.terminate();
+  await new Promise(resolve => setTimeout(resolve, 80)); // longer than the ordinary lobby grace
+  assert.equal(room.offlineDeadlineAt !== null, true);
+  const back = await connect(host.welcome.token);
+  const resumed = await back.waitFor('room.state');
+  assert.equal(back.welcome.resumed, true);
+  assert.equal(resumed.code, state.code);
+  assert.equal(resumed.seats[0].playerId, host.welcome.playerId);
+  assert.equal(room.offlineDeadlineAt, null);
+});
+
+test('real socket refresh resumes a running bot room and keeps its spectator', async t => {
   const srv = await startServer({ host: '127.0.0.1', port: 0, quiet: true });
   const clients = [];
   t.after(async () => { await Promise.all(clients.map(c => c.terminate())); await srv.close(); });
@@ -112,14 +211,17 @@ test('real socket closure immediately removes a running bot room and closes its 
   assert.equal((await host.request({ t: 'room.start' })).t, 'ok');
   await host.waitFor('m.public');
   await host.terminate();
-  assert.equal((await spectator.waitFor('room.closed')).reason, 'empty');
-  assert.equal(srv.lobby.getRoom(room.code), null);
-  assert.equal(srv.lobby.stats().matches, 0);
-  assert.equal((await (await fetch(srv.url + '/api/lobby')).json()).roomCount, 0);
+  await spectator.waitFor('room.state', s => s.seats[0].connected === false);
+  const running = srv.lobby.getRoom(room.code).match;
+  assert.equal(srv.lobby.stats().matches, 1);
+  assert.equal((await (await fetch(srv.url + '/api/lobby')).json()).roomCount, 1);
   const back = await connect('Host', host.welcome.token);
-  assert.equal(back.welcome.resumed, true, 'player identity survives, the old room does not');
-  assert.equal((await back.waitFor('room.closed')).reason, 'empty');
-  assert.equal(srv.registry.byId(back.welcome.playerId).roomCode, null);
+  assert.equal(back.welcome.resumed, true);
+  assert.equal((await back.waitFor('room.state')).code, room.code);
+  await back.waitFor('m.public');
+  assert.equal(srv.lobby.getRoom(room.code).match, running, 'resume the same match');
+  assert.equal(srv.lobby.offlineTimers.size, 0);
+  assert.equal(spectator.log.some(m => m.t === 'room.closed'), false);
 });
 
 test('new messages validate identifiers, difficulties and boolean visibility', () => {
@@ -164,6 +266,7 @@ test('directory uses stable sequential numbers and opaque identifiers, without l
   assert.equal(snapshot.rooms[0].directoryId, a.directoryId);
   for (const r of [a, b]) assert.equal(JSON.stringify(snapshot).includes(r.code), false);
   lobby.leave(lobby.registry.byId(a.hostId));
+  lobby.disposeRoom(a, 'empty'); // simulate the retention deadline before checking stale identifiers
   const c = create(player());
   snapshot = report();
   assert.deepEqual(snapshot.rooms.map(r => r.number), ['0002', '0003']);

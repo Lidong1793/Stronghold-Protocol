@@ -39,7 +39,7 @@ export class Matchmaking {
   findRoom(difficulty) {
     for (const room of this.lobby.rooms.values()) {
       if (!room.disposed && room.isPublic && room.mode === 'coop' && !room.match &&
-          room.difficulty === difficulty && room.freeSeat() >= 0 && room.activeHumans().some(s => s.connected)) return room;
+          room.difficulty === difficulty && room.freeSeat() >= 0 && room.hasOnlineHumans()) return room;
     }
     return null;
   }

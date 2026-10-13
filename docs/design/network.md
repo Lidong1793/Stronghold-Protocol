@@ -15,14 +15,18 @@ room and rechecks visibility before joining/spectating. Hidden rooms remain acce
 `room.spectate {code}` and invite links. Public numbers are not join keys. Overview totals include private rooms;
 list/filter counts include only public entries.
 
-Local immediate-empty cleanup (2026-10-12): the last connected human player leaving or disconnecting disposes the
-room and its running match immediately, including solo rooms. Bots and spectators never keep it alive; spectators
-receive `room.closed {reason:'empty'}` and disconnected members receive it on their next resume. Member room links,
-grace/resync timers and match resources are cleared. This local rule takes precedence over the upstream reconnect
-windows below: an offline seat is kept only while another human player remains online in that room.
+Local empty-room retention (2026-10-14): the last connected human player leaving or disconnecting starts one
+five-minute cleanup deadline (`emptyRoomMs`), including solo rooms and running matches. Offline player seats are
+preserved during this interval instead of receiving the usual 60-second lobby grace; refresh/resume restores the
+same room and match. A connected player returning or joining cancels the deadline; a later absence starts a new
+one. Bots, spectators, repeated disconnects and match endings cannot extend it. At expiry the room and match are
+disposed, spectators receive `room.closed {reason:'empty'}`, and disconnected members receive it on their next
+resume. Member room links and grace/resync/retention timers are cleared. This local limit takes precedence over
+the longer upstream reconnect windows below. Retained rooms still count towards room/network capacity limits.
 
 `match.start {difficulty}` (heavy bucket) starts a server-owned FIFO search outside a room. It immediately joins a
-public co-op lobby of exactly that difficulty with a free player seat and at least one connected human. Otherwise,
+public co-op lobby of exactly that difficulty with a free player seat and at least one connected human player
+(bots and spectators do not count). Retained rooms with temporarily absent players are skipped. Otherwise,
 it waits up to 30 real seconds, rechecking when room state changes and on a bounded timer. At the deadline it tries
 joining once more, then creates a public co-op room through the normal room/rate limits. Several waiting players
 fill the new room in order, without exceeding four seats. `match.cancel` stops a search; disconnect, expiry,

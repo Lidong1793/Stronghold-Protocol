@@ -196,9 +196,11 @@ test('co-op spectator over websockets: watches the real match like an eliminated
     assert.equal(c.log.filter((x) => x.t === 'm.private' || x.t === 'm.toast' || x.t === 'm.unitStats').length, 0, 'no private frame');
     assert.ok(!c.log.some((x) => /"(funds|hand|shop|temp)":/.test(JSON.stringify(x))), 'no private player data');
   }
-  // the last player leaves: the match ends and the room closes for its spectator
+  // The last player leaves: the match ends, but the spectator cannot extend the retained room's deadline.
   await ok(a, { t: 'g.leave' });
-  assert.equal((await back.waitFor('room.closed', () => true, 5000)).reason, 'empty');
+  const retained = await back.waitFor('room.state', r => !r.inMatch && !r.seats.some(s => s && !s.isBot));
+  assert.ok((await server()).lobby.getRoom(retained.code).offlineDeadlineAt !== null);
+  await back.expectNone('room.closed', () => true, 50);
   assert.deepEqual(errors, []);
 });
 

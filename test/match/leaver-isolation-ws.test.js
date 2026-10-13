@@ -48,10 +48,11 @@ for (const leaverSeat of [0, 1]) for (const phase of [PHASE.PREP, PHASE.COMBAT, 
     await survivor.terminate();
     const restored = await TestClient.connect(`ws://127.0.0.1:${srv.port}/ws`); clients.push(restored);
     const w = await restored.hello('Survivor', survivor.token); assert.equal(w.playerId, survivor.id);
-    // Local policy: the departed player cannot evict an online survivor, but no online humans ends the room.
-    assert.equal((await restored.waitFor('room.closed')).reason, 'empty');
-    assert.equal(srv.lobby.getRoom(state.code), null);
-    assert.equal(m.disposed, true);
-    assert.equal(srv.registry.byId(survivor.id).roomCode, null);
+    // A short absence does not let the departed player evict the survivor's resumable match either.
+    assert.equal((await restored.waitFor('room.state')).code, state.code);
+    assert.equal(srv.lobby.getRoom(state.code), room);
+    assert.equal(room.match, m);
+    assert.equal(m.disposed, false);
+    assert.equal(srv.registry.byId(survivor.id).roomCode, state.code);
   });
 }

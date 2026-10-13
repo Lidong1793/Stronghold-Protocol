@@ -2,9 +2,9 @@
 // (DESIGN §2, §6.1 LOBBY, §8.1). Implements the handler interface consumed by server/net.js.
 //
 // Rules (the choices where DESIGN is silent are marked ▸):
-//   * Local room cleanup (2026-10-12): no connected human players → dispose immediately, in lobby or match,
-//     solo or co-op. Bots/spectators do not keep rooms alive. This takes precedence over the upstream grace/resume
-//     policy below; an offline player's seat remains resumable only while another human player stays online.
+//   * Local room cleanup: no connected human players → retain for at most 5 minutes, in lobby or match,
+//     solo or co-op. Preserve offline player seats during this interval; returning players cancel the deadline.
+//     Bots/spectators never extend it. This limit takes precedence over the upstream grace/resume policy below.
 //   * Rooms are keyed by 4-letter codes from an unambiguous alphabet (no I/O, letters only). Join codes are
 //     case-insensitive.
 //   * 'solo' rooms hold exactly one human and never bots. 'coop' rooms have 4 seats (humans + AI bots).
@@ -23,7 +23,7 @@
 //     (it stays the player's identity: net.js sessions belong to players, not seats). ▸ No ban: the player may join
 //     again with the code.
 //   * Host migration: when the host leaves (or is removed), the lowest-seat remaining human (connected
-//     ones first) becomes host. A room without humans is disposed (bots never keep a room alive).
+//     ones first) becomes host. A room without online humans starts its retention deadline.
 //   * Disconnect in LOBBY: the seat shows connected=false and is freed after `lobbyGraceMs` (60 s); a
 //     session that comes back after that gets `room.closed {reason:'timeout'}`.
 //     Disconnect in a match: the seat is kept and match.onDisconnect(playerId) is called.
@@ -116,6 +116,7 @@ export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 /** Tunables. */
 export const LOBBY_DEFAULTS = Object.freeze({
   lobbyGraceMs: 60_000,   // disconnected humans keep their lobby seat this long
+  emptyRoomMs: 5 * 60_000, // continuous absence of connected human players, independent of game speed
   maxRooms: 1000,
   maxRoomsPerAddr: 16,    // rooms created from one client network that may exist at once (0 = unlimited)
   maxMatchesPerAddr: 8,   // matches started from one client network that may run at once (0 = unlimited)
@@ -209,6 +210,8 @@ export class Room {
     /** @type {string | null} per-network limit key of whoever started the running match */
     this.matchKey = null;
     this.createdAt = now;
+    /** @type {number | null} cleanup deadline while no human player is online */
+    this.offlineDeadlineAt = null;
     this.disposed = false;
   }
 
@@ -226,6 +229,9 @@ export class Room {
 
   /** Humans that have not departed, in seat order. @returns {Seat[]} */
   activeHumans() { return this.seats.filter((s) => s && !s.isBot && !s.left); }
+
+  /** Bots and spectators cannot keep a room active or make it eligible for matching. */
+  hasOnlineHumans() { return this.activeHumans().some(s => s.connected); }
 
   /** `room.state` frame (DESIGN §8.1) plus `inMatch`. */
   toState() {
@@ -273,6 +279,8 @@ export class Lobby {
     this.matchmaking = new Matchmaking(this);
     /** @type {Map<string, NodeJS.Timeout>} lobby grace timers by playerId */
     this.graceTimers = new Map();
+    /** @type {Map<Room, NodeJS.Timeout>} empty-room retention timers */
+    this.offlineTimers = new Map();
     /** @type {Map<string, NodeJS.Timeout>} deferred (coalesced) resyncs by playerId */
     this.resyncTimers = new Map();
     /** per-network limit warnings: at most one log line per 10 s (the rest are counted) */
@@ -381,7 +389,7 @@ export class Lobby {
     const player = room.seatOf(session.playerId);
     const seat = player || room.spectatorOf(session.playerId);
     seat.connected = false;
-    if (this.removeIfOffline(room)) return;
+    this.syncRoomRetention(room);
     // a spectator's seat is kept like a player's (nothing to tell the match: it plays no field)
     if (room.match) { if (player) this.callMatch(room, 'onDisconnect', session.playerId); } else this.startGrace(room, seat);
     this.broadcastState(room);
@@ -422,9 +430,8 @@ export class Lobby {
     if (this.rooms.size >= this.opts.maxRooms) return fail(ERR.INTERNAL, 'too many rooms');
     const key = session.limitKey || null;
     if (key && this.opts.maxRoomsPerAddr > 0) {
-      // The room being left disappears with this create when the creator is its only human (a spectator is none).
-      const leaving = cur && cur.ownerKey === key && cur.activeHumans().length === 1 && !cur.spectatorOf(session.playerId) ? 1 : 0;
-      if (this.countRooms((r) => r.ownerKey === key) - leaving >= this.opts.maxRoomsPerAddr) {
+      // Retained empty rooms still consume capacity until their cleanup deadline.
+      if (this.countRooms((r) => r.ownerKey === key) >= this.opts.maxRoomsPerAddr) {
         this.limitWarn(`room limit (${this.opts.maxRoomsPerAddr}) reached for ${session.addr}`);
         return fail(ERR.RATE, 'too many rooms from your network');
       }
@@ -830,8 +837,7 @@ export class Lobby {
     for (const s of room.spectators) if (!s.connected) this.startGrace(room, s);
     const host = room.hostId ? room.seatOf(room.hostId) : null;
     if (!host || host.isBot || host.left) this.migrateHost(room);
-    if (room.activeHumans().length === 0) this.disposeRoom(room, 'empty');
-    else this.broadcastState(room);
+    this.broadcastState(room);
   }
 
   /** Match unicast; m.result frames are also kept for the replay. */
@@ -1030,12 +1036,34 @@ export class Lobby {
     };
   }
 
-  /** Remove a room as soon as no human player is online; AI and spectator seats do not count. */
-  removeIfOffline(room) {
-    if (room.disposed) return true;
-    if (room.activeHumans().some(s => s.connected)) return false;
-    this.disposeRoom(room, 'empty');
-    return true;
+  /** One deadline per continuous absence; repeated disconnects, spectators and match endings never extend it. */
+  syncRoomRetention(room) {
+    if (room.disposed) return;
+    if (room.hasOnlineHumans()) {
+      const wasOffline = room.offlineDeadlineAt !== null;
+      this.clearRoomRetention(room);
+      // Other offline players resume the normal lobby grace once somebody has returned.
+      if (wasOffline && !room.match) for (const s of room.activeHumans()) if (!s.connected) this.startGrace(room, s);
+      return;
+    }
+    // A lobby's usual 60-second grace must not evict the players before their room's 5-minute deadline.
+    for (const s of room.activeHumans()) this.clearGrace(s.playerId);
+    if (room.offlineDeadlineAt !== null) return;
+    room.offlineDeadlineAt = this.now() + this.opts.emptyRoomMs;
+    const timer = setTimeout(() => {
+      this.offlineTimers.delete(room);
+      if (room.disposed) return;
+      if (room.hasOnlineHumans()) { this.syncRoomRetention(room); return; }
+      this.disposeRoom(room, 'empty');
+    }, this.opts.emptyRoomMs);
+    timer.unref?.();
+    this.offlineTimers.set(room, timer);
+  }
+
+  clearRoomRetention(room) {
+    clearTimeout(this.offlineTimers.get(room));
+    this.offlineTimers.delete(room);
+    room.offlineDeadlineAt = null;
   }
 
   /**
@@ -1060,7 +1088,6 @@ export class Lobby {
       room.seats[seat.seat] = null;
     }
     if (room.disposed) return; // onLeave may have ended the match and emptied the room
-    if (this.removeIfOffline(room)) return;
     if (room.hostId === playerId) this.migrateHost(room);
     this.broadcastState(room);
   }
@@ -1091,6 +1118,7 @@ export class Lobby {
   startGrace(room, seat) {
     const playerId = seat.playerId;
     this.clearGrace(playerId);
+    if (room.offlineDeadlineAt !== null && room.seatOf(playerId)) return;
     const t = setTimeout(() => {
       this.graceTimers.delete(playerId);
       if (room.disposed || room.match) return;
@@ -1118,6 +1146,7 @@ export class Lobby {
    */
   disposeRoom(room, reason) {
     if (room.disposed) return;
+    this.clearRoomRetention(room);
     room.disposed = true;
     if (this.rooms.get(room.code) === room) this.rooms.delete(room.code);
     const ctx = room.matchCtx;
@@ -1176,6 +1205,7 @@ export class Lobby {
 
   broadcastState(room) {
     if (room.disposed) return;
+    this.syncRoomRetention(room);
     const data = encode(room.toState());
     for (const session of this.memberSessions(room)) sendRaw(session.ws, data);
     this.matchmaking.drain();
