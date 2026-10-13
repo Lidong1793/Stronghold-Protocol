@@ -1,9 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { attackClock, curveValue, gradientValue, groundPoint, isTexas, nodePoses, transformPoint, TexasFx } from '../../public/js/render/fx/texas.js';
+import { attackClock, curveValue, gradientValue, groundPoint, isTexas, loadTexasArt, nodePoses, transformPoint, TexasFx } from '../../public/js/render/fx/texas.js';
 import { UNIT } from '../../public/js/render/style.js';
 import { installFakePixi, fakeViewCtx } from './fakepixi.js';
+
+test('Texas pack and textures use their own served content hashes, matching preloaded URLs', async () => {
+  const urls = [], packUrl = '/assets/~1111111111111111/local/fx/texas/pack.json';
+  const textureUrl = '/assets/~2222222222222222/local/fx/texas/slash.png';
+  let manifestReady = false;
+  const assets = { local: async () => { manifestReady = true; }, localUrl(group, name) {
+    assert.ok(manifestReady); assert.equal(group, 'fx/texas');
+    return name === 'pack' ? packUrl : name === 'slash' ? textureUrl : null;
+  } };
+  const art = await loadTexasArt({ Assets: { load: async (url) => { urls.push(url); return { url }; } } }, assets,
+    async (url, options) => {
+      assert.equal(url, packUrl); assert.equal(options.cache, 'default');
+      return Response.json({ format: 1, operator: 'char_102_texas', effects: { skill_01_range: {} }, textures: { sword: 'slash.png' } });
+    });
+  assert.deepEqual(urls, [textureUrl]); assert.equal(art.textures.sword.url, textureUrl);
+});
 
 test('original FX selects base/elite Texas; alter, other operators and enemies retain their FX', () => {
   for (const id of ['char_102_texas', 'chess_char_1_08_a', 'chess_char_1_08_b']) assert.equal(isTexas({ info: { defId: id } }), true);

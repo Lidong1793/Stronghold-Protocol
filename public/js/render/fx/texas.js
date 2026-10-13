@@ -118,18 +118,22 @@ export function transformPoint(point, node, poses) {
 }
 
 let sharedArt;
-async function loadArt(P) {
-  if (!sharedArt) sharedArt = (async () => {
-    const response = await fetch(ROOT + 'pack.json', { cache: 'no-cache' });
-    if (!response.ok) return null;
-    const pack = await response.json();
-    if (pack.format !== 1 || pack.operator !== 'char_102_texas' || !pack.effects?.skill_01_range) return null;
-    const entries = await Promise.all(Object.entries(pack.textures).map(async ([name, file]) => {
-      if (!/^[A-Za-z0-9_-]+\.png$/.test(file)) throw new Error('Invalid FX texture');
-      return [name, await P.Assets.load(ROOT + file)];
-    }));
-    return { pack, textures: Object.fromEntries(entries) };
-  })().catch(() => null);
+/** Use the served local manifest's content hashes, matching resource preload and the other v0.2.6 loaders. */
+export async function loadTexasArt(P, assets, fetcher = (...args) => globalThis.fetch(...args)) {
+  await assets?.local?.();
+  const url = (key, file) => assets?.localUrl?.('fx/texas', key) || ROOT + file;
+  const response = await fetcher(url('pack', 'pack.json'), { cache: 'default' });
+  if (!response.ok) return null;
+  const pack = await response.json();
+  if (pack.format !== 1 || pack.operator !== 'char_102_texas' || !pack.effects?.skill_01_range) return null;
+  const entries = await Promise.all(Object.entries(pack.textures).map(async ([name, file]) => {
+    if (!/^[A-Za-z0-9_-]+\.png$/.test(file)) throw new Error('Invalid FX texture');
+    return [name, await P.Assets.load(url(file.slice(0, -4), file))];
+  }));
+  return { pack, textures: Object.fromEntries(entries) };
+}
+async function loadArt(P, assets) {
+  if (!sharedArt) sharedArt = loadTexasArt(P, assets).catch(() => null);
   return sharedArt;
 }
 
@@ -139,7 +143,7 @@ export class TexasFx {
     // Existing Node/fake-PIXI suites and installs without optional art must keep their original rendering path.
     if (typeof window !== 'undefined' && this.P.SimpleMesh && this.P.Assets) {
       this.status = 'loading';
-      loadArt(this.P).then(art => { if (!this.disposed) { this.art = art; this.status = art ? 'ready' : 'missing'; } });
+      loadArt(this.P, ctx.assets).then(art => { if (!this.disposed) { this.art = art; this.status = art ? 'ready' : 'missing'; } });
     }
   }
 

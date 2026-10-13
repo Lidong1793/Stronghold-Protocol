@@ -1,9 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createResourcePreloader, resourcePlan } from '../../public/js/resourcePreload.js';
+import { rewriteManifest } from '../../server/http/assetViews.js';
 
 const manifest = (paths) => ({ stats: { files: paths.length }, files: paths });
 const ok = () => new Response(new Uint8Array([1, 2, 3]));
+
+test('v0.2.6 served manifests retain model/file hashes and rewrite hashed audio to the playback URL', () => {
+  const index = { hashOf: () => '1111111111111111', modelHash: () => '2222222222222222' };
+  const source = { stats: { files: 4 }, model: { skel: '/assets/spine/a.skel', atlas: '/assets/spine/a.atlas', textures: ['/assets/spine/a.png'] }, audio: '/assets/audio/bgm/a.mp3' };
+  const served = rewriteManifest(source, 'assets.json', index).doc;
+  const local = rewriteManifest({ groups: { 'fx/texas': { pack: { path: '/assets/local/fx/texas/pack.json' } } } }, 'local-assets.json', index).doc;
+  const plan = resourcePlan(served, local);
+  assert.ok(plan.some(e => e.url === '/assets/~2222222222222222/spine/a.skel'));
+  assert.ok(plan.some(e => e.url === '/assets/~2222222222222222/spine/a.atlas'));
+  assert.ok(plan.some(e => e.url === '/assets/~2222222222222222/spine/a.png'));
+  assert.ok(plan.some(e => e.url === '/assets/~1111111111111111/local/fx/texas/pack.json'));
+  assert.deepEqual(plan.find(e => e.url.startsWith('/media/')), { url: '/media/~1111111111111111/bgm/a', fallback: '/assets/~1111111111111111/audio/bgm/a.mp3' });
+  assert.ok(plan.filter(e => e.url.startsWith('/assets/')).every(e => e.url.startsWith('/assets/~')));
+});
 function fixture(paths, handler, options = {}) {
   const calls = [];
   const fetch = async (url, opts) => {
