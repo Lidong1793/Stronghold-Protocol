@@ -2,9 +2,9 @@
 // (DESIGN §2, §6.1 LOBBY, §8.1). Implements the handler interface consumed by server/net.js.
 //
 // Rules (the choices where DESIGN is silent are marked ▸):
-//   * Local room cleanup: no connected human players → retain for at most 5 minutes, in lobby or match,
-//     solo or co-op. Preserve offline player seats during this interval; returning players cancel the deadline.
-//     Bots/spectators never extend it. This limit takes precedence over the upstream grace/resume policy below.
+//   * Local room cleanup: offline human player seats → retain for at most 5 minutes, in lobby or match,
+//     solo or co-op. Returning players cancel the deadline. No remaining human seats → dispose immediately.
+//     Bots/spectators never retain a room. This limit takes precedence over the upstream grace/resume policy below.
 //   * Rooms are keyed by 4-letter codes from an unambiguous alphabet (no I/O, letters only). Join codes are
 //     case-insensitive.
 //   * 'solo' rooms hold exactly one human and never bots. 'coop' rooms have 4 seats (humans + AI bots).
@@ -23,7 +23,7 @@
 //     (it stays the player's identity: net.js sessions belong to players, not seats). ▸ No ban: the player may join
 //     again with the code.
 //   * Host migration: when the host leaves (or is removed), the lowest-seat remaining human (connected
-//     ones first) becomes host. A room without online humans starts its retention deadline.
+//     ones first) becomes host. Offline humans get a retention deadline; no remaining humans means immediate cleanup.
 //   * Disconnect in LOBBY: the seat shows connected=false and is freed after `lobbyGraceMs` (60 s); a
 //     session that comes back after that gets `room.closed {reason:'timeout'}`.
 //     Disconnect in a match: the seat is kept and match.onDisconnect(playerId) is called.
@@ -430,8 +430,9 @@ export class Lobby {
     if (this.rooms.size >= this.opts.maxRooms) return fail(ERR.INTERNAL, 'too many rooms');
     const key = session.limitKey || null;
     if (key && this.opts.maxRoomsPerAddr > 0) {
-      // Retained empty rooms still consume capacity until their cleanup deadline.
-      if (this.countRooms((r) => r.ownerKey === key) >= this.opts.maxRoomsPerAddr) {
+      // Switching away disposes the creator's old room only when no other human seat remains.
+      const leaving = cur && cur.ownerKey === key && cur.activeHumans().length === 1 && !cur.spectatorOf(session.playerId) ? 1 : 0;
+      if (this.countRooms((r) => r.ownerKey === key) - leaving >= this.opts.maxRoomsPerAddr) {
         this.limitWarn(`room limit (${this.opts.maxRoomsPerAddr}) reached for ${session.addr}`);
         return fail(ERR.RATE, 'too many rooms from your network');
       }
@@ -1039,6 +1040,8 @@ export class Lobby {
   /** One deadline per continuous absence; repeated disconnects, spectators and match endings never extend it. */
   syncRoomRetention(room) {
     if (room.disposed) return;
+    // Explicit departures free (or mark left) their seats; only resumable offline players justify retention.
+    if (room.activeHumans().length === 0) { this.disposeRoom(room, 'empty'); return; }
     if (room.hasOnlineHumans()) {
       const wasOffline = room.offlineDeadlineAt !== null;
       this.clearRoomRetention(room);
@@ -1206,6 +1209,7 @@ export class Lobby {
   broadcastState(room) {
     if (room.disposed) return;
     this.syncRoomRetention(room);
+    if (room.disposed) return;
     const data = encode(room.toState());
     for (const session of this.memberSessions(room)) sendRaw(session.ws, data);
     this.matchmaking.drain();

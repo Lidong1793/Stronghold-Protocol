@@ -15,14 +15,17 @@ room and rechecks visibility before joining/spectating. Hidden rooms remain acce
 `room.spectate {code}` and invite links. Public numbers are not join keys. Overview totals include private rooms;
 list/filter counts include only public entries.
 
-Local empty-room retention (2026-10-14): the last connected human player leaving or disconnecting starts one
+Local disconnected-room retention (2026-10-14): when human player seats remain but none are connected, start one
 five-minute cleanup deadline (`emptyRoomMs`), including solo rooms and running matches. Offline player seats are
 preserved during this interval instead of receiving the usual 60-second lobby grace; refresh/resume restores the
 same room and match. A connected player returning or joining cancels the deadline; a later absence starts a new
 one. Bots, spectators, repeated disconnects and match endings cannot extend it. At expiry the room and match are
 disposed, spectators receive `room.closed {reason:'empty'}`, and disconnected members receive it on their next
 resume. Member room links and grace/resync/retention timers are cleared. This local limit takes precedence over
-the longer upstream reconnect windows below. Retained rooms still count towards room/network capacity limits.
+the longer upstream reconnect windows below. When the last human permanently leaves (including switching rooms,
+expiry, or a departed match seat), dispose immediately; bots and spectators alone never justify retention.
+Retained disconnected rooms still count towards room/network capacity limits; switching out of a room that loses
+its only human immediately frees that room's capacity.
 
 `match.start {difficulty}` (heavy bucket) starts a server-owned FIFO search outside a room. It immediately joins a
 public co-op lobby of exactly that difficulty with a free player seat and at least one connected human player

@@ -95,6 +95,41 @@ for (const action of ['leave', 'disconnect']) {
   });
 }
 
+for (const mode of ['solo', 'coop']) for (const running of [false, true]) {
+  test(`last human explicitly leaving removes ${mode} ${running ? 'running' : 'waiting'} room immediately`, t => {
+    const { lobby, player, create } = fixture(t);
+    const host = player(), room = create(host, 'NORMAL', mode);
+    let watcher, disposals = 0, departures = 0;
+    if (mode === 'coop') {
+      lobby.addBot(host);
+      watcher = player(); lobby.spectate(watcher, { code: room.code });
+    }
+    if (running) {
+      const match = { onLeave: () => departures++, dispose: () => disposals++ };
+      room.match = match;
+      room.matchCtx = { live: true, ended: false, disposed: false, match };
+    }
+    assert.equal(lobby.onMessage(host, { t: running ? 'g.leave' : 'room.leave' }).ok, true);
+    assert.equal(lobby.getRoom(room.code), null);
+    assert.equal(host.roomCode, null);
+    assert.equal(room.disposed, true);
+    assert.equal(lobby.offlineTimers.size, 0);
+    assert.equal(disposals, running ? 1 : 0);
+    assert.equal(departures, running ? 1 : 0);
+    if (watcher) assert.deepEqual(watcher.frames.at(-1), { t: 'room.closed', reason: 'empty' });
+  });
+}
+
+test('permanent removal of the last disconnected player cancels retention and removes the room immediately', t => {
+  const { lobby, player, create } = fixture(t);
+  const host = player(), room = create(host);
+  host.connected = false; lobby.onDisconnect(host);
+  assert.equal(lobby.offlineTimers.size, 1);
+  lobby.onExpire(host);
+  assert.equal(lobby.getRoom(room.code), null);
+  assert.equal(lobby.offlineTimers.size, 0);
+});
+
 test('a disconnected teammate resumes their seat while another human stays online', t => {
   const { lobby, player, create } = fixture(t);
   const host = player(), guest = player(), watcher = player(), room = create(host);
@@ -152,7 +187,8 @@ test('retained offline rooms remain unavailable at the matching deadline; explic
   assert.notEqual(seeker.roomCode, room.code);
   assert.equal(seeker.frames.at(-1).reason, 'created');
   lobby.leave(seeker);
-  assert.equal(lobby.offlineTimers.size, 2);
+  assert.equal(lobby.roomOf(seeker), null);
+  assert.equal(lobby.offlineTimers.size, 1, 'only the disconnected host retains a room');
   lobby.shutdown();
   assert.equal(lobby.offlineTimers.size, 0);
   assert.equal(lobby.rooms.size, 0);
@@ -266,7 +302,6 @@ test('directory uses stable sequential numbers and opaque identifiers, without l
   assert.equal(snapshot.rooms[0].directoryId, a.directoryId);
   for (const r of [a, b]) assert.equal(JSON.stringify(snapshot).includes(r.code), false);
   lobby.leave(lobby.registry.byId(a.hostId));
-  lobby.disposeRoom(a, 'empty'); // simulate the retention deadline before checking stale identifiers
   const c = create(player());
   snapshot = report();
   assert.deepEqual(snapshot.rooms.map(r => r.number), ['0002', '0003']);

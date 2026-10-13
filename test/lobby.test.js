@@ -470,7 +470,7 @@ describe('websocket lobby', () => {
   const cap = captureLog();
 
   before(async () => {
-    srv = await startServer({ port: 0, host: '127.0.0.1', log: cap.log, MatchClass: Match, emptyRoomMs: 100 });
+    srv = await startServer({ port: 0, host: '127.0.0.1', log: cap.log, MatchClass: Match });
     pool = clientPool(() => `ws://127.0.0.1:${srv.port}/ws`);
   });
   afterEach(async () => { await pool.closeAll(); srv.lobby.shutdown(); });
@@ -634,9 +634,8 @@ describe('websocket lobby', () => {
     assert.notEqual(own.code, st.code);
     await host.waitFor('room.state', (s) => s.seats[1] === null);
 
-    // last human leaving starts the bounded retention period
+    // last human explicitly leaving disposes the room immediately
     await expectOk(guest, { t: 'room.leave' });
-    await delay(150);
     await expectError(host, { t: 'room.join', code: own.code }, ERR.ROOM_NOT_FOUND);
   });
 
@@ -811,7 +810,7 @@ describe('websocket lobby', () => {
     await expectError(host, { t: 'room.addBot' }, ERR.NOT_IN_ROOM);
   });
 
-  test('add / remove AI; a room with only AI is disposed after the retention deadline', async () => {
+  test('add / remove AI; a room with only AI is disposed immediately after the player leaves', async () => {
     const host = await pool.player('Host');
     const st = await createRoom(host);
     await expectOk(host, { t: 'room.addBot' });
@@ -835,7 +834,6 @@ describe('websocket lobby', () => {
 
     await expectOk(host, { t: 'room.leave' });
     const probe = await pool.player('Probe');
-    await delay(150);
     await expectError(probe, { t: 'room.join', code: st.code }, ERR.ROOM_NOT_FOUND);
   });
 
@@ -1011,13 +1009,12 @@ describe('websocket lobby', () => {
     const back = await host.waitFor('room.state', (s) => !s.inMatch);
     assert.equal(seatOf(back, guest.id), null, 'departed seat freed');
 
-    // host leaving a running match with nobody else starts the retention period
+    // host explicitly leaving a running match with nobody else disposes the room immediately
     host.clearInbox();
     await expectOk(host, { t: 'room.start' });
     await host.waitFor('m.public', (m) => m.phase === 'INFO_CHECK');
     await expectOk(host, { t: 'room.leave' });
     const probe = await pool.player('Probe');
-    await delay(150);
     await expectError(probe, { t: 'room.join', code: st.code }, ERR.ROOM_NOT_FOUND);
   });
 
@@ -1084,6 +1081,7 @@ describe('websocket lobby', () => {
     const seen = new Set();
     for (const room of srv.lobby.rooms.values()) {
       const humans = room.activeHumans();
+      assert.ok(humans.length >= 1, 'retained rooms must have at least one resumable human seat');
       assert.equal(room.offlineDeadlineAt !== null, !room.hasOnlineHumans());
       if (humans.length) assert.ok(humans.some((h) => h.playerId === room.hostId), `room ${room.code} host is not an active human`);
       else assert.equal(room.hostId, null);
@@ -1805,20 +1803,16 @@ describe('per-network limits', () => {
 
     // a match from A ends → capacity is back
     await expectOk(keeper, { t: 'g.leave' });
-    await delay(150); // retained empty rooms also count towards the network's room limit
     const again = await netPlayer('again', A);
     const st = await again.request({ t: 'room.create', mode: 'solo', difficulty: 'FUNNY' });
     assert.equal(st.t, 'ok', JSON.stringify(st));
     await expectOk(again, { t: 'room.start' });
   });
 
-  test('retained empty rooms count towards the network limit when switching rooms', async () => {
+  test('switching rooms removes the old room when no other human seat remains', async () => {
     const B = '203.0.113.99';
     const c = await netPlayer('hopper', B);
-    for (let i = 0; i < 3; i++) await expectOk(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
-    await expectError(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' }, ERR.RATE);
-    await delay(150);
-    await expectOk(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
+    for (let i = 0; i < 6; i++) await expectOk(c, { t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
   });
 
   test('per-network socket cap is enforced at upgrade (429); other networks and local peers are unaffected', async () => {
