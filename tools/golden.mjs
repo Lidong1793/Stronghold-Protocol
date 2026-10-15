@@ -726,9 +726,13 @@ export function matchScenarios() {
   // original outcomes, and add companion seeds that still exercise the complete shop → deployment → battle path.
   // Local AI opening preference (2026-10-15): reseed the two coverage companions to keep multiple stand-ins and
   // 推进之王 actually fielded under the new opening choices. The original outcome scenarios above stay in place.
-  out.push({ id: 'coop2-NORMAL-4-coverage-standins', mode: 'coop', difficulty: 'NORMAL', bots: 1, seed: 4, human: { notOwned: MATCH_NOT_OWNED } });
+  // Ioleta now stays at low shop levels to build elites. This coverage-only companion starts at L5,
+  // like the DIY companion, and also lacks 斯卡蒂 so it exercises normal AND elite stand-ins.
+  // The unboosted original above continues to pin the natural strategy outcome.
+  out.push({ id: 'coop2-NORMAL-4-coverage-standins', mode: 'coop', difficulty: 'NORMAL', bots: 1, seed: 4,
+    human: { notOwned: [...MATCH_NOT_OWNED, 'chess_char_3_05_a'], shopLevel: 5 } });
   out.push({ id: 'coop2-NORMAL-3-coverage-diy', mode: 'coop', difficulty: 'NORMAL', bots: 1, seed: 3, human: { diy: MATCH_DIY, shopLevel: 5 } });
-  const humanAbout = (h) => (h.notOwned ? ` + 1 human seat (AI 托管) without ${h.notOwned.length} operators (补位 stand-ins)`
+  const humanAbout = (h) => (h.notOwned ? ` + 1 human seat (AI 托管) without ${h.notOwned.length} operators (补位 stand-ins)${h.shopLevel ? ` and its 调度中心 at level ${h.shopLevel} from the first prep` : ''}`
     : ` + 1 human seat (AI 托管) with ${Object.keys(h.diy || {}).length} 自选 picks${h.shopLevel ? ` and its 调度中心 at level ${h.shopLevel} from the first prep` : ''}`);
   return out.map((m) => ({ ...m, family: 'matches', kind: 'match', about: `${m.mode} ${m.difficulty}, ${m.bots} bot seat(s)${m.human ? humanAbout(m.human) : ''}, seed ${m.seed}${m.clientCombat === false ? ', server-run combat' : ''}${m.boost ? `, LP ${m.boost.lp} and ${m.boost.layers} layers per bond from the first prep` : ''}` }));
 }
@@ -1035,7 +1039,7 @@ const ABOUT = {
  * fields (one of them a Hidden Core), six matches (solo 标准 / 绝境, co-op 2 / 4, the boosted Hidden Core run, the 补位
  * match) and the normal-record stand-in battles.
  */
-const FAST_MATCHES = new Set(['solo-FUNNY-1', 'solo-HARD-1', 'coop2-NORMAL-3', 'coop4-ABYSS-7', 'solo-HARD-9-boosted', 'coop2-NORMAL-14-standins', `coop2-NORMAL-${MATCH_DIY_SEED}-diy`, 'coop2-NORMAL-1-coverage-standins', 'coop2-NORMAL-5-coverage-diy']);
+const FAST_MATCHES = new Set(['solo-FUNNY-1', 'solo-HARD-1', 'coop2-NORMAL-3', 'coop4-ABYSS-7', 'solo-HARD-9-boosted', 'coop2-NORMAL-14-standins', `coop2-NORMAL-${MATCH_DIY_SEED}-diy`, 'coop2-NORMAL-4-coverage-standins', 'coop2-NORMAL-3-coverage-diy']);
 const FAST_FIELDS = new Set(['boss-boss_1-pair', 'boss-boss_4-solo', 'boss-boss_7-pair', 'hidden-boss_9-pair', 'unite-1', 'unite-2']);
 export function isFast(sc) {
   if (sc.family === 'matches') return FAST_MATCHES.has(sc.id);
