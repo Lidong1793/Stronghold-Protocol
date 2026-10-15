@@ -4,6 +4,8 @@
 //
 // It reads only what a player can see: its own state, the shop, the shared pool's copies left, the teammates' bond
 // strips, and the round's enemy preview (composition and routes, research 06 §4.3 "查看当前回合即将迎击的敌方单位").
+// Ioleta's local owner policy (2026-10-15, botIoleta.js) overrides the generic prep below:
+// elite-gated L2/L3, affordable merges before upgrades, elite retention and soft 坚守 / 精准 / 奥术 preferences.
 //
 // Prep routine (botPrep):
 //   1. take a pending reward offer (merge progress, bond synergy, tier)
@@ -89,6 +91,7 @@ import { withBounties, isFlyKey } from './waves.js';
 import { mitigate } from '../sim/damage.js';
 import { HOVER_KEYS } from '../sim/content/enemies.js';
 import { attackRangeGrid, loadoutRecord, resolveRecordLoadout } from '../../shared/loadoutRecord.js';
+import { isIoleta, IOLETA_ELITE_VALUE, ioletaBuyBondBonus, ioletaBondScore, ioletaCanLevel } from './botIoleta.js';
 
 /**
  * Drive a step generator (planLayoutSteps, createRehearsalSteps, arrangeSteps, botPrepBeginSteps …) to its end in one
@@ -507,6 +510,7 @@ function unitBase(m, piece, ctx) {
   const c = chessRec(m, piece.id, ctx.ps);
   if (!c) return 0;
   let v = power(c) + (piece.items ? piece.items.length * 5 : 0);
+  if (isIoleta(ctx.ps) && c.isGolden) v += IOLETA_ELITE_VALUE;
   if (m.round <= 11) v += traitsOf(m, c).recurring * 4;
   if (c.attackKind === 'none' && !isHealer(c)) v -= 6;
   if (ctx.fly > 0 && hitsFly(c)) v += 2;
@@ -525,15 +529,28 @@ function pieceValue(m, ps, piece, ctx) {
  * Score of a deployed set: unit values + the bonds it activates (exact tiers via bondsMeta.computeBonds, hand
  * members still count for BOARD_AND_DECK bonds) + composition (blockers, anti-air when the wave flies, ≤ 2 healers).
  */
-function lineupScore(m, ps, set, ctx) {
+function lineupBonds(m, ps, set) {
   const gd = ps?.gd || m.gd;
   const board = new Map();
   set.forEach((p, i) => board.set(`x${i}`, p));
   const inSet = new Set(set.map((p) => p.uid));
   const hand = ps.hand.map((p) => (p && !inSet.has(p.uid) ? p : null));
-  const bonds = computeBonds(gd, { board, hand, layers: ps.layers, bondCountBonus: ps.bondCountBonus });
+  return computeBonds(gd, { board, hand, layers: ps.layers, bondCountBonus: ps.bondCountBonus });
+}
+
+function lineupScore(m, ps, set, ctx) {
+  const gd = ps?.gd || m.gd;
+  const bonds = lineupBonds(m, ps, set);
   let v = 0;
   for (const p of set) v += unitBase(m, p, ctx);
+  if (isIoleta(ps)) {
+    const elites = set.filter((p) => gd.isGolden(p.id));
+    // The actual band adds ATK and HP per deployed elite to every deployed elite.
+    // [ASSUMED] Translate that shared stat gain into the same power units as the lineup.
+    const perElite = gd.band(ps.bandId)?.params?.atk_per_cnt || 0;
+    v += elites.length * perElite * elites.reduce((sum, p) => sum + power(gd.chess(p.id)), 0);
+    v += ioletaBondScore(gd, bonds);
+  }
   for (const [id, b] of Object.entries(bonds)) {
     // every deployed focus member counts on the way to the next threshold (a swap alone never reaches the 6-member tier)
     if (id === ctx.focus) {
@@ -579,7 +596,7 @@ function chooseLineup(m, ps, ctx) {
         const trial = set.slice();
         trial[i] = bench[j];
         const s = lineupScore(m, ps, trial, ctx);
-        if (s > score + 0.5 && (!best || s > best.s || (s === best.s && (i < best.i || (i === best.i && j < best.j))))) best = { i, j, s };
+        if (s > score + (isIoleta(ps) ? 1e-6 : 0.5) && (!best || s > best.s || (s === best.s && (i < best.i || (i === best.i && j < best.j))))) best = { i, j, s };
       }
     }
     if (!best) break;
@@ -624,6 +641,12 @@ function buyScore(m, ps, id, ctx) {
   if (ctx.model && !isHealer(c)) s += ARMOR_WEIGHT * 0.6 * (armorFit(ctx.model, c) - 0.6);
   // the player's own 自选 piece (a slotted slot: its composed record carries diyFor) — AI 托管 of a human with picks
   if (c.diyFor) s += DIY_PIECE_BONUS;
+  if (isIoleta(ps)) {
+    // Independent tie preferences for cards already offered; no target bond or refresh incentive.
+    if (!ctx.owned.bases.has(base)) s += ioletaBuyBondBonus(gd, c, ctx.owned);
+    if (ps.completesChessMerge(id)) s += 24;
+    if (c.isGolden) s += IOLETA_ELITE_VALUE;
+  }
   // [ASSUMED] A soft 18-point cooperation weight (PR #407), not an official rule or a reserved card.
   // Leave high-tier shared chess to living teammates whose opening strategy needs its faction.
   // Humans and bots count equally; a single soft penalty still allows valuable own merges.
@@ -1374,10 +1397,12 @@ export function* botPrepBeginSteps(m, ps) {
   yield;
   yield* buyLoopSteps(m, ps, { fillOnly: true, maxRefreshes: 0 });
   takeOffers(m, ps);
+  if (isIoleta(ps)) yield* arrangeSteps(m, ps);
   levelUp(m, ps);
   yield;
   yield* buyLoopSteps(m, ps, { fillOnly: false, maxRefreshes: MAX_REFRESHES });
   takeOffers(m, ps);
+  if (isIoleta(ps)) yield* arrangeSteps(m, ps);
   levelUp(m, ps, { spare: true });
   maybeFreeze(m, ps);
   yield;
@@ -1448,6 +1473,9 @@ export function levelUp(m, ps, { spare = false } = {}) {
   const gd = ps?.gd || m.gd;
   for (let guard = 0; guard < 6; guard++) {
     if (ps.shop.level >= gd.maxShopLevel) return;
+    if (!ioletaCanLevel(ps)) return; // free upgrades obey the same deployed-elite gate
+    if (isIoleta(ps) && (ps.offers.length || ps.shop.slots.some((s) => s && !s.sold && s.kind === 'chess'
+      && ps.priceOf(s) <= ps.funds && ps.completesChessMerge(s.id)))) return;
     const price = Math.max(0, ps.shop.upgradePrice);
     if (ps.funds < price) return;
     const r = m.round;
@@ -1490,6 +1518,7 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
   let memo = null;
   for (let guard = 0; guard < 40; guard++) {
     if (guard > 0) yield;
+    if (isIoleta(ps)) takeOffers(m, ps); // a merge reward can enable another merge before upgrading
     const ctx = context(m, ps);
     const ownedN = ps.allChess().length;
     const ownKey = `${ps.allChess().map((p) => `${p.uid}:${p.id}:${(p.items || []).length}`).join()}|${ctx.focus}|${ctx.second}`;
@@ -1548,7 +1577,9 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
         if (!carriers) return;
         sc = 6 + (gd.tierOf(s.id) || 1) * 3 - price + (ps.completesItemMerge(s.id) ? 10 : 0);
       }
-      if (sc > bestS) { bestS = sc; best = i; bestMerges = s.kind === 'chess' && ps.completesChessMerge(s.id); }
+      const merges = s.kind === 'chess' && ps.completesChessMerge(s.id);
+      const mergeFirst = isIoleta(ps) && merges !== bestMerges;
+      if (mergeFirst ? merges : sc > bestS) { bestS = sc; best = i; bestMerges = merges; }
     });
     // leftover funds are lost at prep end: reroll while a purchase stays affordable (a band that keeps them: down to its
     // reserve — a free refresh is always taken)

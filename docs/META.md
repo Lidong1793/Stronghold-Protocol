@@ -239,6 +239,16 @@ The rest of this section is the legacy server-run mode
 另一组队友的战场情况" → `BAD_TARGET 'other group hidden'`); eliminated / departed players spectate any field.
 
 ### 1.5 AI player (bot.js)
+**Ioleta specialization** (owner policy, 2026-10-15; DESIGN §6.6): `botIoleta.js` gates L1 → L2 on three
+deployed elites and L2 → L3 on six, including free upgrades; L3+ uses the generic curve. The prep arranges newly
+merged elites before each upgrade pass. Affordable immediate merges and their queued reward chains go first.
+Elite retention adds 120 value per elite, plus a lineup estimate of 统御号令's shared gain. Independent bond
+preferences use small weights 0.3 / 0.2 / 0.1 for 坚守 / 精准 / 奥术, capped at three distinct members; disabled
+bonds add nothing. Shop/reward choices apply these bonuses to new members while fewer than three are owned,
+and add 24 for an immediate merge. [ASSUMED] These weights only favour otherwise comparable choices; there is no
+sequential target, completion bonus or targeted refresh incentive. A fourth member has ordinary value. Duplicated elites count for upgrade gates, distinct members for these bonds. AI 托管
+shares this policy; it does not change manual upgrade legality or the band effect. Tests: `bot-ioleta.test.js`.
+
 **Strategy** (`botPickBand`): the local owner preference (§1.1) excludes 歌利亚 / 杜宾 and always takes an available
 伊奥莱塔·罗素. Otherwise, weighted by starting LP among the offered, untaken bands (alone, 老鲤's withheld first-round funds
 × 0.02); a band whose mechanic rides on a bond the mode switches off weighs 0 — `GameData.bandBondIds` (bands.json
