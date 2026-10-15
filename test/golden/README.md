@@ -59,4 +59,4 @@ node tools/golden.mjs --twice                   # determinism: the corpus twice 
   hook list is frozen in the tool and the corpus is regenerated only on `golden:update` — but new data records do join
   the corpus there (the roster family enumerates `data/chess.json`).
 
-After the measured shared-stock update (DESIGN §29.8), the original stand-in / DIY seeds remain as outcome regressions even when they field no such operator. Companion seeds `coop2-NORMAL-1-coverage-standins` and `coop2-NORMAL-5-coverage-diy` exercise those full paths; the corpus now contains 287 scenarios.
+After the measured shared-stock update (DESIGN §29.8), the original stand-in / DIY seeds remain as outcome regressions even when they field no such operator. Companion seeds `coop2-NORMAL-4-coverage-standins` and `coop2-NORMAL-3-coverage-diy` exercise those full paths under the local AI opening preference (2026-10-15, DESIGN §6.6); the corpus contains 287 scenarios. These replace companion seeds 1 and 5, which no longer fielded multiple stand-ins / 推进之王 after the opening choices changed. The battle-only families retain the upstream fixtures.

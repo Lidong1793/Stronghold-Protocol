@@ -89,6 +89,13 @@ Per match: pick stage (weighted among the mode's `config.modes[m].stages`, weigh
 
 ### 6.6 AI players (bot.js)
 
+Local owner rule (2026-10-15): opening strategy choices made by AI seats or AI 托管 exclude 歌利亚
+(`band_sarkazb`) and 杜宾 (`band_doberm`). Whenever 伊奥莱塔·罗素 (`band_ioleta`) is offered by the mode and
+not already picked by a teammate, the AI always takes it. Otherwise the existing LP weighting, inactive-bond
+exclusions and teammate bond reservations apply to the remaining untaken strategies. Scheduled picks, AI timeouts
+and forced draft completion use the same policy; no first-free fallback bypasses it. Human manual picks and human
+timeout highlights retain their existing rules. This is a requested local AI preference, not an official gameplay rule.
+
 Pending Pointing Stick offers use the existing bounty scorer at bot prep entry, immediately after a successful cast,
 and before Ready. The prep's deadline — and the scheduler's fallback when a step of a bot's prep fails — randomly resolves any remaining offer before temp and Ready; a seat that left is eliminated and its offer dropped.
 

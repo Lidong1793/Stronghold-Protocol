@@ -8,8 +8,9 @@ Versions: the first public release was **0.1.0** (2026-10-02, the state of §0�
 
 Local extensions are integrated with **0.2.6**: the server directory, difficulty matching, public/private rooms,
 immediate empty-room cleanup, optional Texas attack/Sword Rain art and title resource preload with completion history remain. The version uses the upstream
-three-part parser. Simulation changes and golden results come from upstream 0.2.6; the local extensions do not
-change simulation rules.
+three-part parser. Battle simulation changes and battle-only golden results come from upstream 0.2.6; the local extensions do not
+change simulation rules. The local AI opening preference (2026-10-15, §6.6) excludes 歌利亚 / 杜宾 and always takes
+an available 伊奥莱塔·罗素; its bot-match golden outcomes follow the new choices while battle-only fixtures stay unchanged.
 
 ---
 

@@ -66,7 +66,8 @@
 //   6. resolve the temp slots (a 突变细胞 left there — it comes back after every transformation — gets a hand slot made
 //      for it, makeHandRoom, instead of being destroyed), keep one hand slot free (freeHandSlot: a kept bounty Art goes
 //      before a chess on a bot's own seat, never on a human's seat under AI 托管), then Ready.
-// Strategy (botPickBand): weighted by starting LP among the offered bands; never one whose mechanic rides on a bond the
+// Strategy (botPickBand): local owner rule (2026-10-15): never 歌利亚 / 杜宾; always 伊奥莱塔·罗素 when free. Otherwise
+// weighted by starting LP among the offered, untaken bands; never one whose mechanic rides on a bond the
 // mode switches off (gd.bandBondIds = bands.json bondIds: the bond its text names in <…> or its blackboards name — 标准's
 // 潘格尼尼, 克莱门莎, 玛恩纳; DESIGN §21.26); alone, 老鲤's withheld first-round funds only rarely (× 0.02).
 // 机变 (botPickCard): a bounty by its expected payout minus the expected LP lost — bountyKillChance runs the exposure
@@ -140,28 +141,35 @@ const DEFAULT_MELEE_RANGE = [[0, 0], [0, 1]];
  * (gd.bandBondIds ∩ gd.modeInactiveBonds — 标准: 潘格尼尼 <拉特兰>, 克莱门莎 <阿戈尔>, 玛恩纳 <卡西米尔>) weighs 0, never taken
  * (DESIGN §21.26). [ASSUMED] A living teammate's opening strategy soft-reserves those bonds before anyone is deployed:
  * the weight stays positive, at a quarter of the unreserved weight, so the strategy can still be drawn, and the
- * reservation ends when that teammate is eliminated (alivePlayers). With every band excluded, the default band. One
- * rng draw per call (deterministic per seed); a solo match has no teammate to reserve against.
+ * reservation ends when that teammate is eliminated (alivePlayers). Local owner rule (2026-10-15): exclude 歌利亚
+ * and 杜宾, and take 伊奥莱塔·罗素 whenever offered and untaken. Filter teammates' picks before drawing so neither
+ * retries nor a generic first-free fallback can bypass this rule. With every band excluded, use the default only
+ * while it is eligible. One rng draw per nonempty offer list (including a priority pick; deterministic per seed).
  */
 const SOFT_BAND_RESERVE = 0.25;
+const BOT_BANNED_BANDS = new Set(['band_sarkazb', 'band_doberm']);
+const BOT_PREFERRED_BAND = 'band_ioleta';
 export function botPickBand(m, ps) {
   const gd = ps?.gd || m.gd;
-  const ids = gd.bandIds();
-  if (!ids.length) return gd.defaultBandId;
+  const offered = gd.bandIds();
+  const eligible = (id) => !BOT_BANNED_BANDS.has(id)
+    && !gd.bandBondIds(id).some((b) => gd.modeInactiveBonds.has(b))
+    && !m.bandTaken?.(id, ps?.playerId);
+  const ids = offered.filter(eligible);
+  const roll = offered.length ? m.rngBots() : 0;
+  if (ids.includes(BOT_PREFERRED_BAND)) return BOT_PREFERRED_BAND;
+  if (!ids.length) return eligible(gd.defaultBandId) ? gd.defaultBandId : null;
   const lateFunds = (id) => /暂存/.test(String(gd.band(id)?.desc || ''));
   const reserved = new Set(ps && typeof m.alivePlayers === 'function'
     ? m.alivePlayers().filter((p) => p !== ps).flatMap((p) => gd.bandBondIds(p.bandId))
     : []);
-  const inactive = (id) => gd.bandBondIds(id).some((b) => gd.modeInactiveBonds.has(b));
   const pairs = ids.map((id) => {
-    if (inactive(id)) return [id, 0];
     const w = Math.max(1, (gd.startLp(id) - 18) ** 2) * (m.isSolo && lateFunds(id) ? 0.02 : 1);
     return [id, gd.bandBondIds(id).some((b) => reserved.has(b)) ? w * SOFT_BAND_RESERVE : w];
   });
   let total = 0;
   for (const [, w] of pairs) total += w;
-  let r = m.rngBots() * total;
-  if (!(total > 0)) return gd.defaultBandId;
+  let r = roll * total;
   let last = null;
   for (const [id, w] of pairs) {
     if (!(w > 0)) continue;

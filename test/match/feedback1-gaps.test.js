@@ -160,16 +160,17 @@ describe('§21.26 3 — strategies tied to a bond the mode switches off', () => 
     assert.equal(coop.filter((id) => TIED.has(id)).length, 0, 'co-op');
     const offered = new Set(funny.bandIds());
     assert.ok([...solo, ...coop].every((id) => offered.has(id)));
-    assert.ok(new Set(solo).size >= 15 && new Set(coop).size >= 25, 'the other strategies are still spread out');
+    assert.deepEqual([...new Set(solo)], ['band_ioleta'], 'the local priority strategy is always free in solo');
+    assert.ok(new Set(coop).size >= 25, 'the other co-op strategies are still spread out');
   });
 
-  test('绝境: the same seeds still give those strategies (nothing switched off), picks unchanged from the LP-only weighting', () => {
+  test('绝境: those strategies remain available; without the local priority, fallback retains LP-only weighting', () => {
     const { solo, coop } = picks('HARD');
-    assert.ok(solo.filter((id) => TIED.has(id)).length > 0, `solo ${solo.filter((id) => TIED.has(id)).length}/200`);
+    assert.deepEqual([...new Set(solo)], ['band_ioleta']);
     assert.ok(coop.filter((id) => TIED.has(id)).length > 0, `co-op ${coop.filter((id) => TIED.has(id)).length}/800`);
     // the pre-0.1.1 pick (starting LP only), replayed on the same rng: identical where no bond is off
     const before = (m) => {
-      const ids = m.gd.bandIds();
+      const ids = m.gd.bandIds().filter((id) => !['band_sarkazb', 'band_doberm'].includes(id));
       const lateFunds = (id) => /暂存/.test(String(m.gd.band(id)?.desc || ''));
       const pairs = ids.map((id) => [id, Math.max(1, (m.gd.startLp(id) - 18) ** 2) * (m.isSolo && lateFunds(id) ? 0.02 : 1)]);
       let r = m.rngBots() * pairs.reduce((a, [, w]) => a + w, 0);
@@ -181,6 +182,10 @@ describe('§21.26 3 — strategies tied to a bond the mode switches off', () => 
         const seats = [{ seat: 0, playerId: 'ai_0', name: 'AI', isBot: true, connected: true }];
         const a = makeMatch({ mode: 'solo', difficulty, seats, seed, fake: true });
         const b = makeMatch({ mode: 'solo', difficulty, seats, seed, fake: true });
+        for (const h of [a, b]) {
+          const offered = h.m.gd.bandIds();
+          h.m.gd.bandIds = () => offered.filter((id) => id !== 'band_ioleta');
+        }
         assert.equal(botPickBand(a.m, a.m.order[0]), before(b.m), `${difficulty} seed ${seed}`);
         a.m.dispose();
         b.m.dispose();

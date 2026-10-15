@@ -122,11 +122,8 @@ export class MatchPhases {
       if (this.phase !== PHASE.BAND_DRAFT || token !== this._turnToken) return;
       const ps = this.players.get(this.draftTurn());
       if (!ps || !ps.botControlled) return;
-      // a strategy a teammate already took is not selectable (队友已选): the bot re-draws, else the first free one
-      let id = botPickBand(this, ps);
-      for (let k = 0; k < 8 && this.bandTaken(id, ps.playerId); k++) id = botPickBand(this, ps);
-      if (this.bandTaken(id, ps.playerId)) id = this.gd.bandIds().find((b) => !this.bandTaken(b, ps.playerId)) || id;
-      this._applyBand(ps, id, { dedupe: true });
+      // The bot policy already filters taken and forbidden bands and gives the preferred free band priority.
+      this._applyBand(ps, botPickBand(this, ps));
     });
   }
 
@@ -162,6 +159,8 @@ export class MatchPhases {
    * @param {string} playerId
    */
   timeoutBand(playerId) {
+    const ps = this.players.get(playerId);
+    if (ps?.botControlled) return botPickBand(this, ps);
     const f = this.draft && this.draft.focus instanceof Map ? this.draft.focus.get(playerId) : null;
     if (typeof f === 'string' && this.gd.bandAllowed(f) && !this.bandTaken(f, playerId)) return f;
     return this.defaultBand(playerId);
@@ -192,11 +191,11 @@ export class MatchPhases {
     return OK;
   }
 
-  _applyBand(ps, bandId, { dedupe = false } = {}) {
+  _applyBand(ps, bandId) {
     const d = this.draft;
     if (!d || !ps || d.picks[ps.playerId]) return;
-    let id = this.gd.bandAllowed(bandId) ? bandId : this.defaultBand(ps.playerId);
-    if (dedupe && this.bandTaken(id, ps.playerId)) id = this.gd.bandIds().find((b) => !this.bandTaken(b, ps.playerId)) || id;
+    const id = this.gd.bandAllowed(bandId) ? bandId : ps.botControlled ? botPickBand(this, ps) : this.defaultBand(ps.playerId);
+    if (!id) return;
     d.picks[ps.playerId] = id;
     ps.bandId = id;
     ps.lp = this.gd.startLp(id);
@@ -236,7 +235,7 @@ export class MatchPhases {
     for (const ps of this.order) {
       if (!this.draft.picks[ps.playerId]) {
         // one after another in seat order, so each default sees the ones assigned before it (no duplicates)
-        const id = this.defaultBand(ps.playerId);
+        const id = ps.botControlled ? botPickBand(this, ps) : this.defaultBand(ps.playerId);
         this.draft.picks[ps.playerId] = id;
         ps.bandId = id;
         ps.lp = this.gd.startLp(id);

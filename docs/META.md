@@ -98,6 +98,11 @@ band draft / 机变 / PREP deadline, and BATTLE_CHECK / ROUND_START / SETTLE run
 `m.public.overtimeAt` = when the overtime drain starts: 120 real s for all-human teams, 150 real s with an AI teammate at fight start; both on the field clock).
 
 ### 1.1 Band draft
+Local AI preference (owner request, 2026-10-15): AI seats and AI 托管 never take 歌利亚 / 杜宾 and always take
+伊奥莱塔·罗素 when offered and not already picked. `botPickBand` filters taken strategies before drawing; scheduled
+AI picks, AI timeouts and forced completion share this policy. Other eligible strategies keep the existing weights
+and mode restrictions. Human picks and human timeout highlights remain unchanged. See DESIGN §6.6.
+
 Co-op: random order (all seats, bots included), one pick per turn, ONE countdown: `BAND_TURN_SECONDS` 50 s per turn,
 published as `m.public.deadline` (= `draft.turnDeadline`; `draft.turnSeconds` its length) — no step cap; AI seats pick
 at once. A turn that runs out takes the strategy the player highlights in the draft screen (`g.bandFocus {bandId?}`,
@@ -234,7 +239,8 @@ The rest of this section is the legacy server-run mode
 另一组队友的战场情况" → `BAD_TARGET 'other group hidden'`); eliminated / departed players spectate any field.
 
 ### 1.5 AI player (bot.js)
-**Strategy** (`botPickBand`): weighted by starting LP among the offered bands (alone, 老鲤's withheld first-round funds
+**Strategy** (`botPickBand`): the local owner preference (§1.1) excludes 歌利亚 / 杜宾 and always takes an available
+伊奥莱塔·罗素. Otherwise, weighted by starting LP among the offered, untaken bands (alone, 老鲤's withheld first-round funds
 × 0.02); a band whose mechanic rides on a bond the mode switches off weighs 0 — `GameData.bandBondIds` (bands.json
 `bondIds`, built by shared/bandBonds.js: the bond names in <…> of its text, the bond ids / bond pools of its blackboards)
 ∩ `modeInactiveBonds`: 标准's 潘格尼尼, 克莱门莎, 玛恩纳 — and with every offered band excluded it takes the default band;
