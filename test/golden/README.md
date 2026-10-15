@@ -60,3 +60,10 @@ node tools/golden.mjs --twice                   # determinism: the corpus twice 
   the corpus there (the roster family enumerates `data/chess.json`).
 
 After the measured shared-stock update (DESIGN §29.8), the original stand-in / DIY seeds remain as outcome regressions even when they field no such operator. Companion seeds `coop2-NORMAL-4-coverage-standins` and `coop2-NORMAL-3-coverage-diy` exercise those full paths under the local AI opening preference (2026-10-15, DESIGN §6.6); the corpus contains 287 scenarios. These replace companion seeds 1 and 5, which no longer fielded multiple stand-ins / 推进之王 after the opening choices changed. The battle-only families retain the upstream fixtures.
+
+The Ioleta specialization (2026-10-15, DESIGN §6.6) intentionally changes bot-match outcomes. The stand-in coverage
+companion now starts its human at shop L5 (as the DIY companion already does) and includes 斯卡蒂 in not-owned chess:
+low-level elite building otherwise keeps all of its missing T3+ operators out of play. It covers both normal and elite
+stand-ins, while the original unboosted stand-in match remains unchanged as a scenario. The DIY assertion resolves
+elite slots through their base id, since the bot can now merge and deploy its 自选 operator. Both coverage companions
+are included in the fast subset using their current ids. No battle-only fixture moves.

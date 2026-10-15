@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
 const MATCHES = read('./golden/matches.json');
 const BACKUPS = read('../data/backups.json');
+const CHESS = read('../data/chess.json');
 
 test('matches: the 自选 match\'s human seat draws its 自选 pieces in its shop and fields 推进之王 in battle', () => {
   const [id, dg] = Object.entries(MATCHES.scenarios).find(([k]) => /-coverage-diy$/.test(k)) || [];
@@ -24,7 +25,9 @@ test('matches: the 自选 match\'s human seat draws its 自选 pieces in its sho
   for (const [r, , f] of dg.diy.rounds) {
     for (const x of f ? f.split(' ') : []) {
       const [slot, charId] = x.split('→');
-      assert.equal(dg.diy.picks[`chess_char_${slot}`].charId, charId, `round ${r}: ${x} fights as its pick`);
+      const rec = CHESS[`chess_char_${slot}`];
+      assert.ok(rec, `round ${r}: known slot ${slot}`);
+      assert.equal(dg.diy.picks[rec.baseId || rec.chessId].charId, charId, `round ${r}: ${x} fights as its pick (normal or elite)`);
     }
   }
   // the stock: never above its cap (8 at tier 5, 5 at tier 6)

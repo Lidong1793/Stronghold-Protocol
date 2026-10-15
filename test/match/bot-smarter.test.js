@@ -238,6 +238,7 @@ test('items: 信标 on a bench single; both 博士投影 on a normal operator ev
   const m = h.m;
   const ps = m.order[0];
   h.run(() => m.phase === PHASE.PREP && m.round === 1);
+  ps.bandId = 'band_bldsk'; // generic fixture: do not build Ioleta's low-level elite roster
   ps.lp = 999;
   h.run(() => m.phase === PHASE.ROUND_START && m.round === 7);
   const deployed = () => [...ps.board.values()].filter((p) => p.kind === 'chess');
@@ -405,6 +406,7 @@ test('坎诺特 (利滚利: leftover funds are kept, +1 at ≥ 5): with a full b
     const m = h.m;
     const ps = m.order[0];
     h.run(() => m.phase === PHASE.PREP && m.round === 1);
+    ps.bandId = 'band_bldsk'; // generic fixture: do not build Ioleta's low-level elite roster
     ps.lp = 999;
     h.run(() => m.phase === PHASE.PREP && m.round === 7);
     ps.bandId = 'band_cannot';

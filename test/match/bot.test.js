@@ -305,6 +305,7 @@ test('economy: the bot fills the board first (8 units by round 4), levels on its
     const m = h.m;
     const ps = m.order[0];
     h.run(() => m.phase === PHASE.PREP && m.round === 1);
+    ps.bandId = 'band_bldsk'; // generic curve; Ioleta's elite-gated curve has its own suite
     ps.lp = 999;
     const funds1 = ps.funds; // 老鲤 (band_lmlee) withholds R1–R2 income until R3
     h.run(() => m.phase === PHASE.COMBAT && m.round === 1);
@@ -326,6 +327,8 @@ test('bench management: stale low-tier singles are sold at a high shop level; pa
   const h = soloBot({ seed: 6 }).start();
   const m = h.m;
   const ps = m.order[0];
+  h.run(() => m.phase === PHASE.PREP && m.round === 1);
+  ps.bandId = 'band_bldsk'; // generic fixture: do not build Ioleta's low-level elite roster
   ps.lp = 999;
   h.run(() => m.phase === PHASE.ROUND_START && m.round === 7);
   // a crowded bench of tier-I singles at shop level 5, plus a live pair of a tier-V chess
