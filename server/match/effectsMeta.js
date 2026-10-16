@@ -162,7 +162,7 @@ export class EffectDispatcher {
   }
 
   _report(key, hook, e) {
-    if (this.preview) return;
+    if (this.preview) throw e; // discard a broken estimate; never choose a partially applied start
     this.errors++;
     const msg = `${key}.${hook}: ${e && e.message ? e.message : e}`;
     const rec = this.errorsByKey.get(msg);

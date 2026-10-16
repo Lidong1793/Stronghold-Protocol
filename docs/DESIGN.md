@@ -12,7 +12,8 @@ download and asset-pack import controls (docs/ASSETS.md). Battle effects use the
 the upstream three-part parser. The local extensions do not
 change simulation rules. The local AI opening preference (2026-10-15, §6.6) excludes 歌利亚 / 杜宾 and always takes
 an available 伊奥莱塔·罗素; its bot-match golden outcomes follow the new choices while battle-only fixtures stay unchanged.
-Ioleta's local AI policy also gates L2/L3 on three/six deployed elites, prioritizes merges and elite retention,
+Ioleta now defaults to experimental procurement plus adaptive formation; see [the proposal](research/ioleta-adaptive-default.md).
+Its explicit legacy AI policy gates L2/L3 on three/six deployed elites, prioritizes merges and elite retention,
 and softly favours 坚守 / 精准 / 奥术 in close choices (§6.6), without sequential goals or targeted rerolls; other strategies keep the generic economy curve.
 
 ---

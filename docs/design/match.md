@@ -129,7 +129,9 @@ combat blocking, healing and damage rules are unchanged.
 Pending Pointing Stick offers use the existing bounty scorer at bot prep entry, immediately after a successful cast,
 and before Ready. The prep's deadline — and the scheduler's fallback when a step of a bot's prep fails — randomly resolves any remaining offer before temp and Ready; a seat that left is eliminated and its offer dropped.
 
-Local owner Ioleta policy (2026-10-15): `band_ioleta` AI (including AI 托管) may upgrade L1 → L2 only with
+Ioleta AI proposal (2026-10-16): experimental procurement and adaptive formation are the defaults for Ioleta AI / takeover; other strategies keep upstream procurement and add the learned candidate. Explicit legacy purchase and formation overrides remain. Ordinary demonstrated R1–13 maps use direction-aware candidate de-duplication, a three-candidate minimum before completed-zero-leak early exit and a deterministic tick budget of 12 per-candidate caps. Server, browser and Worker share the limits and fallback inputs. These [ASSUMED] heuristics change decisions, not official game rules. Sources, costs and measured limitations: [Ioleta proposal](../research/ioleta-adaptive-default.md).
+
+Legacy Ioleta policy (2026-10-15; selected explicitly with botIoletaPolicy: 'legacy'): `band_ioleta` AI (including AI 托管) may upgrade L1 → L2 only with
 at least three deployed elites, and L2 → L3 only with six; free upgrades obey the same gates. From L3 the ordinary
 economy curve applies. Eligibility does not force an upgrade. Affordable shop merges and their reward chains precede
 upgrades; newly acquired elites are arranged before checking the gate, so bench-only elites never unlock it.
