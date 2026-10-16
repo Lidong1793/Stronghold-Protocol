@@ -1,10 +1,47 @@
 # 卫戍协议站位决策优化交接给 Opus 5.5
 
-日期：2026-10-16。用途：把本文件整体发给没有仓库和历史对话的 Opus 5.5，要求其设计下一轮可实现、可验证的站位改进。正文可独立阅读，附录内嵌当前代码摘录、全部 42 份示教、7 张地图的静态部署/路线摘要和逐种子结果。文件路径只是本地执行者的定位索引，不要求接收方能打开这些路径。
+更新日期：2026-10-16。本文件用于让 Opus 5.5 从 GitHub 接手站位决策设计。请先阅读下面的版本说明和仓库阅读步骤，再使用历史实验与附录。
+
+## 0 当前 GitHub 状态与阅读入口
+
+仓库为公开仓库：[YuliCao/Stronghold-Protocol](https://github.com/YuliCao/Stronghold-Protocol)，默认分支 **master**。
+
+- **当前代码基线已合并上游 0.3.0**，并保留本地 AI 策略。对应提交：[975e1593](https://github.com/YuliCao/Stronghold-Protocol/commit/975e1593aa34ef6c2feec7152be364dce3059d23)。这不是仅下载上游作参考的阶段了。
+- 本文最初写于合并前；交接文档和本地 AI 实验代码已保存于历史提交 `d725b632`。下面的 **560 场站位实验、60/60 专项测试、287 个 golden、源码/地图摘录及源指纹，都是合并前快照**，不能当成 0.3.0 当前工程的验证结果。
+- 后续合并修改了战斗引擎、内容与整局 golden。最新集成记录见 [docs/history/0.3.0.md](https://github.com/YuliCao/Stronghold-Protocol/blob/master/docs/history/0.3.0.md)。其中记录 288 个 golden 匹配，但全量测试并非全绿；请区分集成测试与站位强度基准。
+- 当前没有在本交接更新中重新跑 0.3.0 的 HARD/ABYSS 站位对照。**第一项工作应是在当前同一代码版本上重建 legacy / learned / optimized 三组基线**，再判断历史推荐是否仍成立。
+- 本文旧段落中的“当前”“本轮”若涉及算法细节、测量、默认开关或待修风险，均指合并前实验状态；以实际 GitHub 源码及当前设计文档为准。附录保留原样用于追溯，不伪装成新版摘录。
+
+### 给 Opus 的仓库阅读步骤
+
+1. 先确认能实际读取仓库。报告读到的分支、完整提交 SHA 和 `package.json` 的版本；不能只读 README 就声称读过工程。
+2. 依次阅读 `AGENTS.md`、`docs/ARCHITECTURE.md`、`docs/DESIGN.md`、`docs/META.md`、`docs/SIM.md`、`docs/history/0.3.0.md`，再读本文。
+3. 阅读实际 AI 文件：`server/match/bot.js`、`botFormation.js`、`botFormationProfiles.js`、`botIoletaExperimental.js`、`botRefinements.js`，以及 `server/match/preview.js`、`server/match/match/combat.js`、`server/match/board.js`、`server/sim/dir.js`。需要时沿导入继续追踪，不能用本文摘录替代现有实现。
+4. 阅读 `tools/botbench-formations.mjs`、`tools/botbench.mjs`、`tools/botbench/formations.mjs`、`tools/botbench/metrics.mjs`、`test/match/bot-formation.test.js`，核查当前候选生成、预算、演习、统计和回退逻辑。
+5. 阅读 `docs/research/formation-optimization.md`、`formation-optimization-2026-10-16.json` 和 `layout-demonstrations.json`，将它们当历史证据。`.cache/` 中原始日志通常未上传，不能假定 GitHub 上存在；需要时请求本地执行者导出。
+6. 输出“已经核实的当前实现”“历史证据”“待验证假设”三类结论。若可运行，则在独立分支进行实验；若只能阅读，则按第13节输出可由本地 Codex 实施的设计。
+
+如有终端，可克隆后读取；已有 checkout 不要重新覆盖：
+
+```sh
+git clone https://github.com/YuliCao/Stronghold-Protocol.git
+cd Stronghold-Protocol
+git branch --show-current
+git rev-parse HEAD
+git status --short
+```
+
+需要改代码时先创建 `codex/opus-formation-next` 或其他清晰命名的新分支。任务完成可提交 PR 供用户检查，不直接推送 master、不自行合并 PR。
+
+如果平台只提供网页读取，可以先用 [本文 Raw 文本](https://raw.githubusercontent.com/YuliCao/Stronghold-Protocol/master/docs/research/opus55-formation-handoff.md)，再按上述路径读取文件。如果平台无法访问 GitHub，须明确说明，并让用户连接 GitHub 仓库或上传 ZIP；单独收到网址不代表已经取得整个仓库。
+
+## 以下为保留的实验交接内容
+
+正文与附录保存了合并前的算法、42份示教、7张地图摘要和逐种子结果，可用于理解设计和提出假设。当前实现和当前强度需要按第0节重新核实。
 
 ## 1 直接交给接收方的任务
 
-你负责提出下一版站位决策设计，本地 Codex 负责实现、运行真实引擎和反馈结果。你没有完整仓库、完整战斗引擎或运行环境；请基于本文做技术推演，明确区分代码事实、实验结论、推测和待采集证据，不声称已运行测试。
+你负责完善站位决策设计。请先按第0节读取 GitHub 当前工程；有执行环境时可在新分支实现和验证，否则由本地 Codex 实现、运行真实引擎和反馈。明确区分当前源码事实、历史实验结论、推测和待采集证据，不声称运行了未执行的测试。
 
 目标是把用户提供的 v0.2 示教站位与原上游 0.3.0 的 AI 思路结合，进一步降低 HARD、ABYSS 的前期漏怪，特别是累计前 10 回合和累计前 11 回合。不要测 NORMAL。用户允许多轮有序实验。保留 Boss/隐藏关站位与现有可回退方案，不升级或替换项目，不夹带经济策略、战斗机制改动。
 
@@ -20,15 +57,15 @@
 
 | 名称 | 含义 |
 |---|---|
-| 本地项目 0.2.6 | 当前项目基底，保留本地修改 |
-| 上游项目 0.3.0 | 外部参考版本，未升级本地战斗引擎 |
+| 合并前项目 0.2.6 | 本文历史站位实验的引擎基底 |
+| 当前项目 0.3.0 | 已通过 TempesTKF 合并上游，并保留本地 AI；须重建站位基准 |
 | 站位 v0.1 / v0.2 / v0.3 实验版 | 旧站位 / 用户示教站位 / 本轮新候选与难度预设，与项目发布号无关 |
 | experimental Ioleta | 罗素采购、合成和升级策略，与站位开关独立 |
 | preview、capacity | 演习输入隔离/真实性修正，以及手牌与阵容容量修正，本轮比较全部固定启用 |
 
-原上游：`https://github.com/sganggs/Stronghold-Protocol`，参考提交 `c24e17eec3af1e6dedfa9935a6d15245cf2f4586`。继承链为 sganggs → TempesTKF → YuliCao。上游源码以 ZIP 独立保存在本地工程外，没有覆盖现有项目，也没有完整 Git 历史可供逐提交归因。
+原上游：`https://github.com/sganggs/Stronghold-Protocol`，参考提交 `c24e17eec3af1e6dedfa9935a6d15245cf2f4586`。继承链为 sganggs → TempesTKF → YuliCao。早期研究时，上游源码以 ZIP 独立保存；这描述历史取样方式。之后已经完成 0.3.0 合并，当前应结合仓库提交记录审查，不要沿用“仅下载而未合并”的旧状态。
 
-本地工程：`D:\Code\VibeProject\StrongholdProtocol`。工作树已有大量历史未提交修改，不得 reset 或整体覆盖。此次交接只写文档，不另改 AI 行为。
+本地工程：`D:\Code\VibeProject\StrongholdProtocol`。历史 AI 修改和交接文档已经提交并推送。执行者仍须先检查自己的 git status，保护任何新增未提交修改，不得 reset 或整体覆盖。本次更新只修正文档，不另改 AI 行为。
 
 ## 3 范围与验收原则
 
@@ -75,7 +112,7 @@ v0.2 的角色识别：医疗为 heal；MELEE 且 TANK/PIONEER、blockCnt≥2，
 
 几何留出检查的历史结果：42 个非治疗单位中被治疗覆盖从 32 提升到 39，人工示例 41；但这不等于生存能力、有效治疗量或真实少漏怪。v0.2 先放阻挡、再医疗、再输出，局部选点会受顺序影响。
 
-## 6 当前决策流水线和接口
+## 6 合并前决策流水线和接口
 
 1. `chooseLineup` 决定本次部署哪些棋子；这一步不属于本轮优化。
 2. `arrangeSteps(...,{final:true})` 构造多个站位候选。
@@ -147,7 +184,7 @@ refined 的邻域目前仅为把一个棋子移动到空格或原格、改变朝
 
 采购策略保持 experimental Ioleta：以精锐数量、三助力/三坚守/两精准（次选两助力/三坚守/三精准）等目标调整购买、升级和合成。capacity 修正会在评估购买/阵容时考虑可退回手牌的现有单位和购买所需手牌槽。站位比较不要同时改这些条件，也不能比较一个默认开启 preview/capacity 的旧站位与一个未开启它们的新站位。
 
-## 9 已有实验结果和可信边界
+## 9 合并前实验结果和可信边界
 
 最终修正版，同种子 51–70，每难度每方案 20 局，固定 experimental + preview,capacity：
 
@@ -202,7 +239,7 @@ ABYSS 新方案比 v0.2 前 10 回合多漏 2、前 11 回合少漏 17（24.3%�
 
 报告每个难度的前10、前11、单独R11、R11–13、R12–13，普通/悬赏漏怪，敌人数和参战回合分母，配对改善/持平/退步种子数，Boss到达与通关、准备耗时。不要只汇总两种难度的总漏怪。先追求两个早期窗口同时不退步；任何折中都单列，权重若要变成产品决策需明确。
 
-本地复现当前修正版（接收方不能运行时，交给本地代理执行）：
+在当前工程重建对照的命令入口（结果属于新的代码版本，不应期待重现下面历史数字；接收方不能运行时交给本地代理）：
 
 ```powershell
 node tools/botbench-formations.mjs --groups legacy,learned,optimized --seed 51 --seeds 20 --out .cache/ai-formations-reproduce
@@ -222,7 +259,7 @@ m.botRefinements = ['preview', 'capacity'];
 
 全局默认尚未切换，仍保留原默认策略/示教站位；没有新UI开关。显式 false 禁用示教；仅设置 mode 不应假定已经打开 experimental 采购或 preview。未来部署默认变更应作为独立、明确的决策。
 
-## 12 实现地图与验证状态
+## 12 文件索引与历史验证状态
 
 | 文件 | 职责 |
 |---|---|
@@ -237,9 +274,9 @@ m.botRefinements = ['preview', 'capacity'];
 | docs/research/layout-demonstrations.json；tools/layout-lab/learn.mjs | 示教原料与profile生成 |
 | test/match/bot-formation.test.js；test/botbench-metrics.test.js | 站位/预算/确定性、统计回归 |
 
-当前相关测试60/60，golden287/287不变。完整CI并非全绿：既有Windows symlink EPERM、README重连说明缺失、public/fonts缺失；大厅并发失败独立重跑66/66。lint零错误但135条既有警告；imports退出0仍有nodeData.js三项旧边界诊断。不要将这些旧问题误判为新站位性能或功能问题，也不能声称所有CI都通过。
+合并前记录：相关测试60/60，golden287/287不变。完整CI并非全绿：既有Windows symlink EPERM、README重连说明缺失、public/fonts缺失；大厅并发失败独立重跑66/66。lint零错误但135条既有警告；imports退出0仍有nodeData.js三项旧边界诊断。不要将这些旧问题误判为新站位性能或功能问题，也不能声称所有CI都通过。
 
-改动后先跑相关测试，再按项目要求跑CI/golden；生成规则变更须更新docs/design、当前history、META。已有golden文件的工作树改动来自更早任务，本轮没有更新它，不能误删。若真正修改默认游戏行为且需要变更golden，应明确列出移动场景与原因。
+改动后先跑相关测试，再按项目要求跑CI/golden；生成规则变更须更新docs/design、当前history、META。合并0.3.0时已经更新整局golden，详见当前发布历史；不能将其回滚到合并前结果。若真正修改默认游戏行为且需要变更golden，应明确列出移动场景与原因。
 
 ## 13 请 Opus 按此格式交付
 
@@ -255,9 +292,9 @@ m.botRefinements = ['preview', 'capacity'];
 
 ---
 
-# 技术附录
+# 技术附录（合并前快照）
 
-以下为交接时本地实现/数据的直接摘录，不是接收方可独立运行的完整工程。代码依赖的未展开函数以正文合同为准；不应凭片段虚构完整类定义。原始文件名与SHA-256用于本地核对。
+以下为合并0.3.0之前本地实现/数据的直接摘录，不是接收方可独立运行的完整工程。代码依赖的未展开函数以正文合同为准；不应凭片段虚构完整类定义。原始文件名与SHA-256用于本地核对。
 
 ## 源码 server/match/botFormation.js
 
@@ -846,4 +883,4 @@ JSON每行一张地图。normalDeploy 是原数据的普通部署区；groundPat
 {"config":"solo:ABYSS","seed":70,"stage":"act1autochess_m04","legacy":[0,0,2,1],"learned":[0,0,0,1],"optimized":[0,0,0,1]}
 ```
 
-最终基准源指纹：`2d8d1ec2eefa46b0d77b1616d2c656170fe7aaa2a293dfc54b513a80881eb946`。完整机器证据在本地 `docs/research/formation-optimization-2026-10-16.json`，含原始记录哈希、各轮和逐种子配对数据。本文件已内嵌设计讨论所需的核心材料；完整战斗技能与敌人数据未打包，若需具体干员/敌人因果诊断，应向本地执行者索取对应最小快照。
+合并前最终基准源指纹：`2d8d1ec2eefa46b0d77b1616d2c656170fe7aaa2a293dfc54b513a80881eb946`。完整机器证据在本地 `docs/research/formation-optimization-2026-10-16.json`，含原始记录哈希、各轮和逐种子配对数据。本文件已内嵌设计讨论所需的核心材料；完整战斗技能与敌人数据未打包，若需具体干员/敌人因果诊断，应向本地执行者索取对应最小快照。
