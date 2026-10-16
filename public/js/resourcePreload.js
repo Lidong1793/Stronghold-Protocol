@@ -21,8 +21,8 @@ function readRecord(storage) {
 }
 
 // Two independent 32-bit hashes of the complete catalogues and app version. No Web Crypto / HTTPS requirement.
-function catalogueFingerprint(manifest, local, dataFiles, version) {
-  const text = JSON.stringify([version, dataFiles, manifest, local]);
+function catalogueFingerprint(manifest, local, dataFiles, version, fx) {
+  const text = JSON.stringify([version, dataFiles, manifest, local, fx]);
   let a = 2166136261, b = 2654435769;
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
@@ -32,7 +32,7 @@ function catalogueFingerprint(manifest, local, dataFiles, version) {
 }
 
 /** Collect only same-origin manifest assets, including local scene/FX dependencies; never follow metadata URLs. */
-export function resourcePlan(manifest, local, dataFiles = [], origin = 'http://localhost') {
+export function resourcePlan(manifest, local, dataFiles = [], origin = 'http://localhost', fx = null) {
   const urls = new Set();
   function visit(value) {
     if (typeof value === 'string') {
@@ -45,6 +45,7 @@ export function resourcePlan(manifest, local, dataFiles = [], origin = 'http://l
   }
   visit(manifest);
   visit(local?.groups);
+  visit(fx?.groups);
   for (const name of dataFiles) if (/^[\w-]+\.json$/.test(name) && !['assets.json', 'local-assets.json'].includes(name)) urls.add(`/data/${name}`);
   for (const name of VENDOR) urls.add(`/vendor/${name}`);
   const entries = new Map();
@@ -98,7 +99,7 @@ export function createResourcePreloader({ fetch: fetcher = (...args) => globalTh
       try {
         const res = await fetcher(url, { signal: abort.signal, cache: json ? 'no-cache' : 'default', credentials: 'same-origin', priority: 'low' });
         if (optional && res.status === 404) { await res.body?.cancel(); return null; }
-        if (!res.ok || /text\/html/i.test(res.headers.get('content-type') || '')) {
+        if (!res.ok || res.status === 206 || /text\/html/i.test(res.headers.get('content-type') || '')) {
           await res.body?.cancel();
           throw Object.assign(new Error('Resource unavailable'), { status: res.ok ? 404 : res.status });
         }
@@ -136,10 +137,12 @@ export function createResourcePreloader({ fetch: fetcher = (...args) => globalTh
     const manifest = await request('/data/assets.json', signal, true);
     if (!manifest || typeof manifest !== 'object' || !manifest.stats?.files) throw new Error('No asset manifest');
     const local = await request('/data/local-assets.json', signal, true, true);
-    const nextFingerprint = catalogueFingerprint(manifest, local, dataFiles, version);
+    const fx = await request('/data/local-fx.json', signal, true, true);
+    if (fx !== null && (!fx || typeof fx !== 'object' || !fx.groups)) throw new Error('Invalid FX manifest');
+    const nextFingerprint = catalogueFingerprint(manifest, local, dataFiles, version, fx);
     if (saved && saved.fingerprint !== nextFingerprint) forgetRecord();
     fingerprint = nextFingerprint;
-    entries = resourcePlan(manifest, local, dataFiles, origin);
+    entries = resourcePlan(manifest, local, dataFiles, origin, fx);
     checked = true;
   }
 

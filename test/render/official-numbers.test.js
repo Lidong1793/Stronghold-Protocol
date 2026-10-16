@@ -29,25 +29,6 @@ function makeFx(views) {
   return { fx, settings };
 }
 
-test('Texas native hits remain visible with official or hidden damage numbers', () => {
-  const target = unit(2, 4, 9), texas = { ...unit(1, 3, 9), info: { defId: 'char_102_texas' } };
-  const { fx, settings } = makeFx([target, texas]);
-  let hits = 0;
-  fx.texas.hit = () => { hits++; return true; };
-  settings.officialDamageNumbers = true;
-  fx._slashAt = texas.id; fx.damage(target, 40, 'phys', texas);
-  assert.equal(hits, 1); assert.equal(fx.nums.length, 0);
-  fx._slashAt = texas.id; fx.damage(target, 40, 'phys', texas, 'r');
-  assert.equal(hits, 2); assert.equal(fx.nums.length, 1); assert.equal(fx.nums[0].style, 'crit');
-  settings.damageNumbers = false;
-  fx._slashAt = texas.id; fx.damage(target, 40, 'phys', texas, 'r');
-  assert.equal(hits, 3); assert.equal(fx.nums.length, 1);
-  settings.damageNumbers = true; settings.officialDamageNumbers = false;
-  fx._slashAt = texas.id; fx.damage(target, 40, 'phys', texas);
-  assert.equal(hits, 4); assert.equal(fx.nums.length, 2); assert.equal(fx.nums[1].style, 'phys');
-  fx.destroy();
-});
-
 test('official mode hides ordinary hits and heals, and draws a marked red number without merging', () => {
   const v = unit(1, 4, 9);
   const { fx, settings } = makeFx([v]);

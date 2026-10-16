@@ -55,7 +55,6 @@ export class FxSim {
    */
   simFx(kind, x, y, extra) {
     const ex = extra && typeof extra === 'object' ? extra : {};
-    if (this.texas?.swordRain(kind, x, y, ex)) return;
     const spec = fxSpec(kind, ex);
     if (spec.a === 'none') return; // an event the screen does not show (hitCap)
     const at = spec.pt ? this._point(Number(x), Number(y)) : this._where(Number(x), Number(y), ex);

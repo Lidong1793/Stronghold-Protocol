@@ -23,9 +23,9 @@ function fixture(paths, handler, options = {}) {
   const calls = [];
   const fetch = async (url, opts) => {
     calls.push(url);
-    assert.equal(opts.cache, url.startsWith('/data/') && ['assets.json', 'local-assets.json'].includes(url.split('/').pop()) ? 'no-cache' : 'default');
+    assert.equal(opts.cache, url.startsWith('/data/') && ['assets.json', 'local-assets.json', 'local-fx.json'].includes(url.split('/').pop()) ? 'no-cache' : 'default');
     if (url === '/data/assets.json') return Response.json(manifest(paths));
-    if (url === '/data/local-assets.json') return new Response(null, { status: 404 });
+    if (['/data/local-assets.json', '/data/local-fx.json'].includes(url)) return new Response(null, { status: 404 });
     return handler?.(url, opts) || ok();
   };
   return { calls, loader: createResourcePreloader({ fetch, retryDelayMs: 0, ...options }) };
@@ -103,7 +103,7 @@ test('transient failures retry with a bound; a missing catalogue stops early', a
   await absent.loader.start();
   assert.equal(absent.loader.getState().error, 'unavailable');
   assert.equal(absent.loader.getState().completed, 0);
-  assert.equal(absent.calls.length, 5); // 2 manifests, 3 missing files
+  assert.equal(absent.calls.length, 6); // 3 manifests, 3 missing files
 });
 
 test('static hosts fall back from extensionless audio when they return HTML', async () => {
@@ -117,7 +117,7 @@ test('static hosts fall back from extensionless audio when they return HTML', as
 test('manifest error can be retried and cannot report successful completion', async () => {
   let broken = true;
   const loader = createResourcePreloader({ fetch: async (url) => url === '/data/assets.json'
-    ? Response.json(broken ? {} : manifest(['/assets/a'])) : url === '/data/local-assets.json' ? new Response(null, { status: 404 }) : ok() });
+    ? Response.json(broken ? {} : manifest(['/assets/a'])) : ['/data/local-assets.json', '/data/local-fx.json'].includes(url) ? new Response(null, { status: 404 }) : ok() });
   await loader.start(); assert.equal(loader.getState().error, 'manifest'); assert.equal(loader.getState().completed, 0);
   broken = false; await loader.start(); assert.equal(loader.getState().status, 'done');
 });
@@ -150,9 +150,9 @@ test('closing and reopening restores completion; catalogue verification does not
   await reopened.loader.restore();
   const restored = reopened.loader.getState();
   assert.equal(restored.status, 'saved'); assert.equal(restored.bytes, complete.bytes);
-  assert.deepEqual(reopened.calls, ['/data/assets.json', '/data/local-assets.json']);
+  assert.deepEqual(reopened.calls, ['/data/assets.json', '/data/local-assets.json', '/data/local-fx.json']);
   await reopened.loader.restore();
-  assert.equal(reopened.calls.length, 2); // no repeated checks on title remount
+  assert.equal(reopened.calls.length, 3); // no repeated checks on title remount
 });
 
 test('catalogue content changes invalidate completion even with the same resource count', async () => {
@@ -219,4 +219,24 @@ test('a cancelled version check keeps historical completion and can run again', 
   const pending = loader.restore(); await reached; loader.pause(); await pending;
   assert.equal(loader.getState().status, 'saved');
   block = false; await loader.restore(); assert.equal(loader.getState().status, 'saved');
+});
+
+test('upstream official FX are downloaded and a changed FX catalogue invalidates completion', async () => {
+  const storage = memoryStorage(), calls = [];
+  let texture = '/assets/~1111111111111111/local/fx/texture.png';
+  const fetch = async (url) => {
+    calls.push(url);
+    if (url === '/data/assets.json') return Response.json(manifest(['/assets/a']));
+    if (url === '/data/local-assets.json') return new Response(null, { status: 404 });
+    if (url === '/data/local-fx.json') return Response.json({ groups: { official: { texture } } });
+    return ok();
+  };
+  const loader = createResourcePreloader({ fetch, storage });
+  await loader.start();
+  assert.equal(loader.getState().status, 'done');
+  assert.ok(calls.includes(texture));
+  texture = '/assets/~2222222222222222/local/fx/texture.png';
+  const reopened = createResourcePreloader({ fetch, storage });
+  await reopened.restore();
+  assert.equal(reopened.getState().status, 'outdated');
 });
