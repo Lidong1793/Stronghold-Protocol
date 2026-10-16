@@ -259,17 +259,17 @@ maps × six eight-piece blocker/damage/healer distributions with real default-lo
 layouts are stored in `local/layout-training/`; only confirmed layouts export geometric learning features. This tool
 does not change the planner. Workflow and limits: [layout-lab/README.md](../tools/layout-lab/README.md).
 
-**Accepted Ioleta target (2026-10-16, opt-in experiment):** [strategy rules](IOLETA-POLICY.md).
+**Default Ioleta policy (2026-10-16, owner-selected experimental + adaptive):** [strategy rules](IOLETA-POLICY.md).
 Three 助力 / three 坚守 / two 精准 is preferred; two 助力 / three 坚守 / three 精准 is secondary.
 奥术 / 迅捷 are stronger alternatives in disabled-core-bond matches; 迅捷 has a two-member activation and a
 40-layer enhancement, not a three-member threshold. Staged core purchases and upgrades, deferred non-core merges
 and whole-lineup replacement decisions are specified there. `m.botIoletaPolicy = 'experimental'` enables the test
 implementation and its explicitly assumed unresolved parameters. `m.botFormationEnabled = false` independently
-selects the old layout planner. The following specialization remains the default runtime.
+selects the old layout planner. The following specialization is the explicit legacy fallback.
 Formation naming: v0.1 = original / `legacy`; v0.2 = taught / `learned`. These names do not version the policy or app.
 See the [four-group benchmark](research/ioleta-factorial.md) for seeded leakage, survival and win comparisons.
 
-**Ioleta specialization** (owner policy, 2026-10-15; DESIGN §6.6): `botIoleta.js` gates L1 → L2 on three
+**Legacy Ioleta specialization** (owner policy, 2026-10-15; DESIGN §6.6): `botIoleta.js` gates L1 → L2 on three
 deployed elites and L2 → L3 on six, including free upgrades; L3+ uses the generic curve. The prep arranges newly
 merged elites before each upgrade pass. Affordable immediate merges and their queued reward chains go first.
 Elite retention adds 120 value per elite, plus a lineup estimate of 统御号令's shared gain. Independent bond
@@ -1083,3 +1083,22 @@ retain v0.2 and were not benchmarked. This selection was made after seeds 31–5
 seeds 51–70. Keep explicit experimental Ioleta + preview/capacity when reproducing these results. Global defaults
 remain unchanged; the final confirmation includes an ABYSS R1–10 tradeoff versus v0.2 (27 vs 25 leaks), alongside
 R1–11 improvement (53 vs 70) and more Boss arrivals (20 vs 18 out of 20). Full evidence is in the linked report.
+
+
+## 罗素默认策略：experimental + adaptive（2026-10-16，替代 #2）
+
+维护者选择罗素 AI 与 AI 托管默认采用 experimental 采购和 adaptive 站位。
+Match 默认 botIoletaPolicy='experimental'；站位在每个玩家决策时解析，只有罗素采用 adaptive，
+其他策略仍为 learned。显式 botFormationMode 优先；botIoletaPolicy='legacy' 恢复旧采购，
+botFormationMode='learned' 恢复示教站位，botFormationEnabled=false 或 botFormationMode='legacy'
+恢复旧站位。构造参数与同名 Match 属性都支持这些覆盖。
+
+adaptive 仅接管有示教地图的普通 R1–13 最终站位，保留 Boss、隐藏关、未知地图与召唤物逻辑。
+先生成旧默认、learned/contact/refined、其余旧变体以及示教参数变体，再按位置和朝向去重。
+前三个候选之后，若已有完整零漏演习则停止扩展；累计达到单候选 tick 上限的 12 倍后不再启动新候选，
+已启动的候选仍完成。服务端、浏览器、Worker 与委派超时接管使用同一限制。
+这些是 [ASSUMED] 搜索启发式，不改变官方战斗机制；零漏提前停止不保证最大击杀数。
+
+来源与效果边界见 [方案记录](research/ioleta-adaptive-default.md)：HARD 快测支持减少前10/11漏怪；
+ABYSS 前10更好但 R11 单轮退步。测试跳过联防，不作完整联机或通关提升保证。
+旧报告里的“默认未切换”是历史状态；本次维护者选择正式替代该状态。

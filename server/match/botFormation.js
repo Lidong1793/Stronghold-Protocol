@@ -5,11 +5,12 @@ import { FORMATION_PROFILES } from './botFormationProfiles.js';
 const tileValues = new WeakMap();
 
 // [ASSUMED] Experimental combinations of owner v0.2 zones and upstream 0.3 contact/safety ideas.
-export const FORMATION_MODES = ['legacy', 'learned', 'ordered', 'contact', 'refined', 'combined', 'optimized'];
+export const FORMATION_MODES = ['legacy', 'learned', 'ordered', 'contact', 'refined', 'combined', 'optimized', 'adaptive'];
 
 /** Explicit experimental preset; unmeasured difficulties retain owner v0.2. */
-export function resolveFormationMode(m) {
-  const mode = m.botFormationMode || 'learned';
+export function resolveFormationMode(m, ps = null) {
+  const mode = m.botFormationMode || (ps?.bandId === 'band_ioleta' && m.botIoletaPolicy === 'experimental'
+    ? 'adaptive' : 'learned');
   if (mode !== 'optimized') return mode;
   return m.difficulty === 'HARD' ? 'contact' : m.difficulty === 'ABYSS' ? 'combined' : 'learned';
 }

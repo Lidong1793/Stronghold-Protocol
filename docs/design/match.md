@@ -154,18 +154,18 @@ combat blocking, healing and damage rules are unchanged.
 Pending Pointing Stick offers use the existing bounty scorer at bot prep entry, immediately after a successful cast,
 and before Ready. The prep's deadline — and the scheduler's fallback when a step of a bot's prep fails — randomly resolves any remaining offer before temp and Ready; a seat that left is eliminated and its offer dropped.
 
-Accepted replacement policy (2026-10-16, opt-in experiment only): [Ioleta strategy rules](../IOLETA-POLICY.md).
+Default Ioleta policy (2026-10-16, owner-selected experimental + adaptive): [Ioleta strategy rules](../IOLETA-POLICY.md).
 Prefer three 助力 / three 坚守 / two 精准; two 助力 / three 坚守 / three 精准 is the secondary framework.
 奥术 and 迅捷 gain fallback priority when core bonds are disabled. The linked rules define staged core purchases,
 upgrade exits, deferred non-core merges and whole-lineup replacement value. The paragraph below describes the
-default runtime only, not the replacement target. `m.botIoletaPolicy = 'experimental'` selects the documented
+explicit legacy fallback. `m.botIoletaPolicy = 'experimental'` selects the documented
 experimental parameters; `m.botFormationEnabled = false` independently disables the taught layout candidate.
 Formation versions are v0.1 for the original layout (`legacy`, false) and v0.2 for the taught layout
-(`learned`, true/default), independent of policy and application release versions.
+(`learned`, explicit override for Ioleta), independent of policy and application release versions.
 The [240-match factorial comparison](../research/ioleta-factorial.md) records the results and leakage accounting;
-the experiment does not replace the default AI.
+the owner now selects experimental + adaptive by default; see the default-policy section below.
 
-Local owner Ioleta policy (2026-10-15): `band_ioleta` AI (including AI 托管) may upgrade L1 → L2 only with
+Legacy owner Ioleta policy (2026-10-15, explicit fallback): `band_ioleta` AI (including AI 托管) may upgrade L1 → L2 only with
 at least three deployed elites, and L2 → L3 only with six; free upgrades obey the same gates. From L3 the ordinary
 economy curve applies. Eligibility does not force an upgrade. Affordable shop merges and their reward chains precede
 upgrades; newly acquired elites are arranged before checking the gate, so bench-only elites never unlock it.
@@ -270,3 +270,22 @@ retain v0.2 and were not benchmarked. This selection was made after seeds 31–5
 seeds 51–70. Keep explicit experimental Ioleta + preview/capacity when reproducing these results. Global defaults
 remain unchanged; the final confirmation includes an ABYSS R1–10 tradeoff versus v0.2 (27 vs 25 leaks), alongside
 R1–11 improvement (53 vs 70) and more Boss arrivals (20 vs 18 out of 20). Full evidence is in the linked report.
+
+
+## 罗素默认策略：experimental + adaptive（2026-10-16，替代 #2）
+
+维护者选择罗素 AI 与 AI 托管默认采用 experimental 采购和 adaptive 站位。
+Match 默认 botIoletaPolicy='experimental'；站位在每个玩家决策时解析，只有罗素采用 adaptive，
+其他策略仍为 learned。显式 botFormationMode 优先；botIoletaPolicy='legacy' 恢复旧采购，
+botFormationMode='learned' 恢复示教站位，botFormationEnabled=false 或 botFormationMode='legacy'
+恢复旧站位。构造参数与同名 Match 属性都支持这些覆盖。
+
+adaptive 仅接管有示教地图的普通 R1–13 最终站位，保留 Boss、隐藏关、未知地图与召唤物逻辑。
+先生成旧默认、learned/contact/refined、其余旧变体以及示教参数变体，再按位置和朝向去重。
+前三个候选之后，若已有完整零漏演习则停止扩展；累计达到单候选 tick 上限的 12 倍后不再启动新候选，
+已启动的候选仍完成。服务端、浏览器、Worker 与委派超时接管使用同一限制。
+这些是 [ASSUMED] 搜索启发式，不改变官方战斗机制；零漏提前停止不保证最大击杀数。
+
+来源与效果边界见 [方案记录](../research/ioleta-adaptive-default.md)：HARD 快测支持减少前10/11漏怪；
+ABYSS 前10更好但 R11 单轮退步。测试跳过联防，不作完整联机或通关提升保证。
+旧报告里的“默认未切换”是历史状态；本次维护者选择正式替代该状态。

@@ -85,7 +85,7 @@
 // tools/botbench.mjs.
 
 import { ASPD_MIN } from '../sim/constants.js';
-import { rehearsalCap, RehearsalRun } from '../sim/rehearsal.js';
+import { rehearsalCap, RehearsalRun, rehearsalLeaks, rehearsalLimits } from '../sim/rehearsal.js';
 import { freeSlot, countFree, legalTiles, canPlace, positionClass, placeClass, basePositionClass, parseKey, tileKey, FIELD, pieceDir, boardTileOf, BOSS_MIRROR_COL } from './board.js';
 import { rotateOffset, normDir, mirrorDir, oppositeDir } from '../sim/dir.js';
 import { itemKey } from './gamedata.js';
@@ -1022,7 +1022,7 @@ export function supportedContact(model, units, key, self = null) {
 export function repairLayout(m, ps, pieces, plan) {
   const out = new LayoutPlan(plan);
   out.dirs = new Map(plan.dirs || []);
-  if (!m.wave || m.round < 1 || m.round > 13 || m.round === m.bossRound || m.round === m.hiddenRound) return out;
+  if (!m.wave || m.round < 1 || m.round > 13 || m.round === m.gd.bossRound || m.round === m.gd.hiddenRound) return out;
   const model = fieldModel(m, ps), map = ps.deployMap(), gd = ps.gd || m.gd;
   const layout = new Layout(model, LAYOUT_PARAMS);
   const records = new Map(pieces.map(p => [p.uid, rangeRec(ps, gd.chess(p.id))]));
@@ -1086,7 +1086,7 @@ export function planLayout(m, ps, pieces, params = LAYOUT_PARAMS, opts = {}) {
 }
 
 /** planLayout as a step generator: yields after each placed piece (Match slices a bot's prep, see botPrepBeginSteps). */
-export function* planLayoutSteps(m, ps, pieces, params = LAYOUT_PARAMS, { occupied = new Set(), recOf = null, formation = false, formationMode = resolveFormationMode(m) } = {}) {
+export function* planLayoutSteps(m, ps, pieces, params = LAYOUT_PARAMS, { occupied = new Set(), recOf = null, formation = false, formationMode = resolveFormationMode(m, ps) } = {}) {
   const model = fieldModel(m, ps);
   const map = ps.deployMap();
   const pgd = ps.gd || m.gd;
@@ -1284,12 +1284,67 @@ export const REHEARSAL_VARIANTS = Object.freeze([
   { kill: 3 },
 ]);
 
+/** A plan labelled with the candidate source it came from (diagnostics only: m.botFormationTrace). */
+function sourced(plan, source) {
+  plan.source = source;
+  return plan;
+}
+
+/** The taught planner modes whose candidates the pooled formation modes add (no RNG: the profile planner has no noise). */
+const POOL_TAUGHT = Object.freeze(['learned', 'contact', 'refined']);
+
+/**
+ * [ASSUMED] The candidates of the 'adaptive' formation modes (docs/research/ioleta-adaptive-default.md):
+ * the old default plan first (the fallback and the tie winner), the taught plans, the other legacy variants — every one
+ * of them, de-duplicated BEFORE any rehearsal budget cuts the list —, and with `wide` the taught planners under each
+ * other legacy parameter variant. `legacy` are the REHEARSAL_VARIANTS plans already built in their usual order, so the
+ * RNG draws are those of every other mode; the taught planners draw none.
+ * @returns {Generator<undefined, LayoutPlan[]>} distinct plans in priority order
+ */
+function* formationPoolSteps(m, ps, chosen, legacy, { wide = false } = {}) {
+  const taught = [];
+  for (const mode of POOL_TAUGHT) {
+    taught.push(sourced(yield* planLayoutSteps(m, ps, chosen, LAYOUT_PARAMS, { formation: true, formationMode: mode }), mode));
+  }
+  const extra = [];
+  if (wide) for (const [i, v] of REHEARSAL_VARIANTS.entries()) {
+    if (!i) continue;
+    for (const mode of POOL_TAUGHT) {
+      extra.push(sourced(yield* planLayoutSteps(m, ps, chosen, { ...LAYOUT_PARAMS, ...v }, { formation: true, formationMode: mode }), `${mode}:${i}`));
+    }
+  }
+  const all = [legacy[0], ...taught, ...legacy.slice(1), ...extra];
+  // (diagnostics: each kept plan names the sources that produced the same candidate)
+  const kept = new Map();
+  for (const plan of all) {
+    const k = kept.get(planSignature(plan));
+    if (k) (k.aliases || (k.aliases = [])).push(plan.source); else kept.set(planSignature(plan), plan);
+  }
+  return distinctPlans(all);
+}
+
+/**
+ * [ASSUMED] Search limits of the 'adaptive' mode: the first ADAPTIVE_STAGE candidates always run; the rest only while
+ * every finished one still leaks, and none starts after ADAPTIVE_CAPS × the per-candidate cap of ticks in total. Tools
+ * may override both (m.botRehearsalStage / m.botRehearsalCaps; 0 = off) for ablations.
+ */
+export const ADAPTIVE_STAGE = 3;
+export const ADAPTIVE_CAPS = 12;
+function adaptiveLimits(m) {
+  const stage = m.botRehearsalStage ?? ADAPTIVE_STAGE;
+  const caps = m.botRehearsalCaps ?? ADAPTIVE_CAPS;
+  return rehearsalLimits({ stage, tickBudget: caps * rehearsalCap(m.wave && m.wave.timeLimit) });
+}
+
 /** Distinct plans (same unit → tile assignment ⇒ one candidate), in order. */
+/** A plan's identity as a candidate: unit → tile and direction. */
+const planSignature = (plan) => [...plan.entries()].sort((a, b) => a[0] - b[0]).map(([u, k]) => `${u}@${k}:${planDir(plan, u)}`).join(' ');
+
 function distinctPlans(plans) {
   const out = [];
   const seen = new Set();
   for (const plan of plans) {
-    const sig = [...plan.entries()].sort((a, b) => a[0] - b[0]).map(([u, k]) => `${u}@${k}:${planDir(plan, u)}`).join(' ');
+    const sig = planSignature(plan);
     if (!seen.has(sig)) { seen.add(sig); out.push(plan); }
   }
   return out;
@@ -1321,26 +1376,46 @@ function candidateOpts(m, ps, byUid, plan) {
  * `run(budgetMs)` steps until every candidate is done (false: still running); `done` is only true then, and `best`
  * is the winner — the default plan (`plans[0]`) while no candidate beat it.
  */
-export function createRehearsalJob(m, ps, chosen, plans, inputs, prebuilt = null) {
+export function createRehearsalJob(m, ps, chosen, plans, inputs, prebuilt = null, limits = null) {
   const cap = rehearsalCap(m.wave && m.wave.timeLimit);
   let run = null;
   const held = prebuilt ? prebuilt.slice() : null;
   const factories = held
     ? held.map((_, i) => () => { const battle = held[i]; held[i] = null; return battle; })
     : inputs.map((o) => () => m.newBattle(o, { preview: true }));
+  // diagnostics (tools): keep each candidate's battle to report it once the run is done; decisions are unaffected
+  const traced = typeof m.botFormationTrace === 'function' ? [] : null;
+  if (traced) factories.forEach((f, i) => { factories[i] = () => (traced[i] = f()); });
   const job = {
-    chosen, plans, inputs, cap, best: plans[0], done: false, pending: false,
+    chosen, plans, inputs, cap, limits: rehearsalLimits(limits || {}), best: plans[0], done: false, pending: false,
     run(budgetMs = Infinity) {
       if (job.done) return true;
-      if (!run) run = new RehearsalRun(factories, ps.playerId, cap);
+      if (!run) run = new RehearsalRun(factories, ps.playerId, cap, job.limits);
       const timed = Number.isFinite(budgetMs);
       const t0 = timed ? performance.now() : 0;
       job.done = run.run(timed ? () => performance.now() - t0 >= budgetMs : null);
       job.best = job.plans[run.score.index] || job.best;
+      if (traced && job.done) traceRehearsal(m, ps, job, run, traced);
       return job.done;
     },
   };
   return job;
+}
+
+/** Report a finished server-side rehearsal to m.botFormationTrace (a throwing callback is ignored). */
+function traceRehearsal(m, ps, job, run, battles) {
+  try {
+    m.botFormationTrace({
+      round: m.round, stageId: m.stageId, difficulty: m.difficulty, playerId: ps.playerId, mode: resolveFormationMode(m, ps),
+      cap: job.cap, limits: job.limits, ticks: run.spent, chosen: run.score.index,
+      candidates: job.plans.map((plan, i) => {
+        const b = battles[i];
+        const pp = b && typeof b.result === 'function' ? b.result()?.perPlayer?.[ps.playerId] : null;
+        return { source: plan.source ?? null, aliases: plan.aliases ?? [], rehearsed: !!b, finished: !!(b && b.finished),
+          leaks: b ? rehearsalLeaks(b, ps.playerId) : null, kills: pp ? pp.killed || 0 : null, ticks: b ? b.tickCount ?? 0 : 0 };
+      }),
+    });
+  } catch { /* diagnostics only */ }
 }
 
 /**
@@ -1350,8 +1425,8 @@ export function createRehearsalJob(m, ps, chosen, plans, inputs, prebuilt = null
  * (`takeOver`, `done` still false) runs the very same candidates here instead. A synchronous `run` (the one-shot
  * botPrep, tools, tests) takes a delegated job over at once: no browser can answer within one call.
  */
-export function createDelegatedRehearsalJob(m, ps, chosen, plans, inputs) {
-  const job = createRehearsalJob(m, ps, chosen, plans, inputs);
+export function createDelegatedRehearsalJob(m, ps, chosen, plans, inputs, limits = null) {
+  const job = createRehearsalJob(m, ps, chosen, plans, inputs, null, limits);
   const step = job.run;
   job.pending = true;
   /** The host's pick (MatchRehearsal checked the sender, the task and the index). */
@@ -1374,8 +1449,8 @@ export function createDelegatedRehearsalJob(m, ps, chosen, plans, inputs) {
  * @returns {null | ReturnType<typeof createRehearsalJob>} null when there is nothing to compare (no wave, < 2 distinct
  *   plans, rehearsal off)
  */
-export function createRehearsal(m, ps, chosen, plans, limit = m.botRehearsal) {
-  return runSteps(createRehearsalSteps(m, ps, chosen, plans, { limit }));
+export function createRehearsal(m, ps, chosen, plans, limit = m.botRehearsal, limits = null) {
+  return runSteps(createRehearsalSteps(m, ps, chosen, plans, { limit, limits }));
 }
 
 /**
@@ -1386,11 +1461,14 @@ export function createRehearsal(m, ps, chosen, plans, limit = m.botRehearsal) {
  * browser (Match.delegateRehearsal — an AI teammate's prep only, and never a gameplay-plugin room). Nothing is built
  * here in that case; a synchronous caller leaves it off and simulates on the server.
  */
-export function* createRehearsalSteps(m, ps, chosen, plans, { delegate = false, limit = m.botRehearsal } = {}) {
+export function* createRehearsalSteps(m, ps, chosen, plans, { delegate = false, limit = m.botRehearsal, limits = null } = {}) {
   const wave = m.wave;
   const distinct = distinctPlans(plans);
   if (!wave || distinct.length < 2 || !(m.botRehearsal > 0)) return null;
   const cands = distinct.slice(0, limit);
+  // a limited run may never reach most candidates: build each one when the run gets there instead of all of them now
+  const { stage, tickBudget } = rehearsalLimits(limits || {});
+  const lazy = stage > 0 || tickBudget > 0;
   const byUid = new Map(chosen.map((p) => [p.uid, p]));
   const inputs = [];
   const battles = [];
@@ -1400,7 +1478,7 @@ export function* createRehearsalSteps(m, ps, chosen, plans, { delegate = false, 
       inputs.push(opts);
       // The default path builds now, in this generator step, as 0.3.0 did. Delegation builds nothing: the host
       // simulates the specs, and a takeover builds these same inputs later.
-      if (!delegate) battles.push(m.newBattle(opts, { preview: true }));
+      if (!delegate && !lazy) battles.push(m.newBattle(opts, { preview: true }));
     } catch {
       // A failed estimate cannot affect the match's error log or displace its default plan.
       break;
@@ -1408,18 +1486,18 @@ export function* createRehearsalSteps(m, ps, chosen, plans, { delegate = false, 
     yield;
   }
   if (delegate && typeof m.delegateRehearsal === 'function') {
-    const job = m.delegateRehearsal({ ps, chosen, plans: cands, inputs });
+    const job = m.delegateRehearsal({ ps, chosen, plans: cands, inputs, limits: lazy ? { stage, tickBudget } : null });
     if (job) return job;
   }
-  return createRehearsalJob(m, ps, chosen, cands, inputs, delegate ? null : battles);
+  return createRehearsalJob(m, ps, chosen, cands, inputs, delegate || lazy ? null : battles, lazy ? { stage, tickBudget } : null);
 }
 
 /**
  * Synchronous rehearsal (tools, tests): see createRehearsal. The board is restored exactly afterwards.
  * @returns {Map<number, string>} the chosen plan
  */
-export function rehearse(m, ps, chosen, plans, limit = m.botRehearsal) {
-  const job = createRehearsal(m, ps, chosen, plans, limit);
+export function rehearse(m, ps, chosen, plans, limit = m.botRehearsal, limits = null) {
+  const job = createRehearsal(m, ps, chosen, plans, limit, limits);
   if (!job) return distinctPlans(plans)[0] || plans[0];
   job.run();
   return job.best;
@@ -1887,32 +1965,39 @@ export function* arrangeSteps(m, ps, { final = false, defer = false, delegate = 
   yield;
   const plans = [];
   if (final && m.wave && m.botRehearsal > 0) {
-    for (const v of REHEARSAL_VARIANTS) plans.push(yield* planLayoutSteps(m, ps, chosen, { ...LAYOUT_PARAMS, ...v }));
+    for (const [i, v] of REHEARSAL_VARIANTS.entries()) plans.push(sourced(yield* planLayoutSteps(m, ps, chosen, { ...LAYOUT_PARAMS, ...v }), `legacy:${i}`));
   } else {
     plans.push(yield* planLayoutSteps(m, ps, chosen));
   }
   // Only the final ordinary-round placement uses the demonstrations. Preserve every old
   // rehearsal candidate within the configured budget, plus one taught candidate (ties favour it).
-  const taught = final && m.botFormationEnabled !== false && formationProfile(m);
+  const taught = final && m.botFormationEnabled !== false && resolveFormationMode(m, ps) !== 'legacy' && formationProfile(m);
   if (final && !taught && plans.length > 1 && (botRefinement(m, 'guards') || botRefinement(m, 'medics'))) {
     const repaired = repairLayout(m, ps, chosen, plans[0]);
     if (distinctPlans([...plans, repaired]).length > distinctPlans(plans).length) plans[plans.length - 1] = repaired;
   }
-  const combined = taught && resolveFormationMode(m) === 'combined';
-  if (combined) {
+  const mode = taught ? resolveFormationMode(m, ps) : null;
+  const combined = mode === 'combined';
+  // adaptive needs the full legacy variant list (a rehearsed final placement); otherwise they plan like learned
+  const adaptive = mode === 'adaptive' && plans.length === REHEARSAL_VARIANTS.length;
+  const limits = adaptive ? adaptiveLimits(m) : null;
+  if (adaptive) {
+    plans.splice(0, plans.length, ...(yield* formationPoolSteps(m, ps, chosen, plans.slice(), { wide: true })));
+  } else if (combined) {
     if (m.botRehearsal > 0) plans.splice(m.botRehearsal);
     // Retain old candidates on rehearsal ties. Extra candidates cost at most three rehearsals.
     for (const mode of ['learned', 'contact', 'refined']) {
       plans.push(yield* planLayoutSteps(m, ps, chosen, LAYOUT_PARAMS, { formation: true, formationMode: mode }));
     }
   } else if (taught) plans.unshift(yield* planLayoutSteps(m, ps, chosen, LAYOUT_PARAMS, { formation: true }));
-  const rehearsalLimit = m.botRehearsal + (taught ? (combined ? 3 : 1) : 0);
+  // Adaptive searches the distinct candidates within its deterministic tick budget.
+  const rehearsalLimit = adaptive ? plans.length : m.botRehearsal + (taught ? (combined ? 3 : 1) : 0);
   if (defer && plans.length > 1) {
-    const job = yield* createRehearsalSteps(m, ps, chosen, plans, { delegate, limit: rehearsalLimit });
+    const job = yield* createRehearsalSteps(m, ps, chosen, plans, { delegate, limit: rehearsalLimit, limits });
     yield* applyPlanSteps(m, ps, chosen, plans[0]);
     return job;
   }
-  yield* applyPlanSteps(m, ps, chosen, plans.length > 1 ? rehearse(m, ps, chosen, plans, rehearsalLimit) : plans[0]);
+  yield* applyPlanSteps(m, ps, chosen, plans.length > 1 ? rehearse(m, ps, chosen, plans, rehearsalLimit, limits) : plans[0]);
   return null;
 }
 

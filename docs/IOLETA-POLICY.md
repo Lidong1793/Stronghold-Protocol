@@ -1,5 +1,9 @@
 # 罗素 AI 策略规则（2026-10-16）
 
+当前状态：维护者已选择 experimental + adaptive 为罗素 AI／托管默认组合。实现参数沿用本文 §8，
+保留 legacy 覆盖；下文的 opt-in、默认未切换及未决项描述保留为制定与实验历史，
+本次不重新调整权重。当前默认契约见 [方案记录](research/ioleta-adaptive-default.md)。
+
 后续增量：用户要求优先评估前 10、11 回合，并授权按上游改进计划自主实现和对照。显式选择
 `botIoletaPolicy='experimental'`、`botFormationEnabled=false` 时，现在默认启用演习真实性与手牌容量修复；
 设置 `botRefinements=[]` 可恢复之前的新策略＋v0.1 站位基线。未修改本文件中的购卡、升本及框架权重，

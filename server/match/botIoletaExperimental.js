@@ -1,4 +1,4 @@
-// Opt-in Ioleta decision experiment; docs/IOLETA-POLICY.md. The default bot never uses
+// Default Ioleta decision policy; docs/IOLETA-POLICY.md. Explicit legacy mode bypasses
 // these helpers. No game rules, random draws or hidden future shops are consulted.
 // [ASSUMED] All numeric scores, fallback ties, abandoned-target handling, early L3,
 // elite tradeoffs and L3 search exits below are test parameters, not accepted rules.

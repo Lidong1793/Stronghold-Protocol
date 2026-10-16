@@ -14,8 +14,8 @@
 //               parallel load — measure decision time with --jobs 1)
 //   --band ID   solo configs only: the bot plays strategy ID (e.g. band_cannot) instead of its weighted pick — a band's
 //               mechanic in isolation (坎诺特 banking, 杜宾's 教鞭, 昆图斯's 突变细胞)
-//   --ioleta-policy legacy|experimental   independent Ioleta economy/purchase policy (default legacy)
-//   --formation legacy|learned|ordered|contact|refined|combined|optimized (default learned)
+//   --ioleta-policy legacy|experimental   independent Ioleta economy/purchase policy (default experimental)
+//   --formation legacy|learned|ordered|contact|refined|combined|optimized|adaptive|default (default per-strategy)
 //
 // Per match: victory, rounds passed, LP left (the alive players at the end; a won Final Assault: the team LP), and per
 // bot and round: LP, shop level, deployed units, active bonds and Σ bond tiers, activated layers, board value (Σ shop
@@ -74,14 +74,14 @@ const configs = String(opt.configs || 'solo:FUNNY,solo:HARD,coop4:FUNNY,coop4:HA
 const seeds = Math.max(1, Number(opt.seeds) || 10);
 const seed0 = Number(opt.seed) || 1;
 const rehearsal = opt.rehearsal != null && opt.rehearsal !== true ? Math.max(0, Math.floor(Number(opt.rehearsal) || 0)) : undefined;
-const ioletaPolicy = String(opt['ioleta-policy'] || 'legacy');
-const formation = String(opt.formation || 'learned');
+const ioletaPolicy = String(opt['ioleta-policy'] || 'experimental');
+const formation = String(opt.formation || 'default');
 const refinements = opt.refinements == null
   ? defaultBotRefinements({ botIoletaPolicy: ioletaPolicy, botFormationEnabled: formation !== 'legacy' })
   : String(opt.refinements).split(',').filter(k => k !== 'none');
 if (refinements.some(k => !BOT_REFINEMENTS.includes(k))) throw new Error('--refinements: expected none or preview,capacity,guards,medics,cheap');
 if (!['legacy', 'experimental'].includes(ioletaPolicy)) throw new Error('--ioleta-policy must be legacy or experimental');
-if (!FORMATION_MODES.includes(formation)) throw new Error(`--formation must be ${FORMATION_MODES.join('|')}`);
+if (formation !== 'default' && !FORMATION_MODES.includes(formation)) throw new Error(`--formation must be ${FORMATION_MODES.join('|')}`);
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sourceFingerprint = fingerprint(['server', 'shared', 'data'].flatMap(dir =>
   readdirSync(new URL(`../${dir}/`, import.meta.url), { recursive: true }).filter(f => /\.(js|json)$/.test(f)).sort()
@@ -100,7 +100,7 @@ function runOne(cfg, seed) {
   });
   m.botIoletaPolicy = ioletaPolicy;
   m.botFormationEnabled = formation !== 'legacy';
-  m.botFormationMode = formation;
+  m.botFormationMode = formation === 'default' ? null : formation;
   m.botRefinements = refinements;
   // --band: the only strategy on offer (botPickBand draws from gd.bandIds()) — also one built around a bond the mode
   // switches off, which botPickBand would otherwise skip for the default band (DESIGN §21.26)
