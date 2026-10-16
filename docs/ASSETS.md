@@ -11,32 +11,6 @@ cooldown. It respects the SFX/mute settings; a stale asynchronous decode cannot 
 All downloaded game assets the client needs are listed in **`data/assets.json`**. Game-art requests must use that manifest.
 The original project icons below are shipped static files, not downloaded game assets.
 
-## Browser resource preload
-
-The title's bottom-right **资源预载** control warms the browser HTTP cache before entering a room. It downloads
-the URLs in `data/assets.json`, the optional `data/local-assets.json` (including scenes) and
-`data/local-fx.json` (official battle effects),
-in-match data and renderer libraries, deduplicated. Audio uses the same extensionless `/media/` URLs as Web Audio,
-with the existing original-path fallback on static hosts. No models, images or audio buffers are decoded in bulk.
-`public/js/resourcePreload.js` uses four concurrent, abortable requests [ASSUMED tuning], a 30-second request/body
-timeout and at most two retries for transient failures. Repeated missing files stop the preload early; a missing
-optional local manifest is harmless. Partial failures never report completion.
-
-The control shows confirmed files / total, percentage and bytes processed (including cache reads, not network
-traffic). Pause/resume and retry retain successful files for this page; leaving the title pauses work. A successful
-full preload saves a small completion record in same-origin `localStorage`. Reopening the page restores that record
-and checks the complete manifests plus app version; a changed catalogue/version clears completion. The restored UI
-explicitly labels it as the last completion record, because browser eviction can occur separately from storage.
-**检查并补齐** rechecks every URL through normal HTTP freshness/ETag rules and retrieves missing files. Reopening alone
-does not redownload the catalogue. Unavailable storage is reported without preventing downloads. The full catalogue is about
-700 MB; cache reuse, capacity and eviction are browser-owned. Completion does not promise permanent offline storage.
-This works on plain HTTP servers and adds no service worker. It cannot install art missing from the server.
-Tests: `test/ui/resource-preload.test.js`.
-
-Local integration: preload retains the content-hash paths from the served manifests (including Spine model
-hashes, `/media/~hash/` audio and the official effects in `data/local-fx.json`). Normal play reuses the served URLs
-that were preloaded. Effect extraction keeps its own manifest separate from `data/local-assets.json`.
-
 ## Original project application icons (#413)
 
 By the maintainer's revised decision of 2026-10-10, **沿用 0.2.x 的薄荷绿城堡并精修**.
