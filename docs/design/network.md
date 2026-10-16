@@ -357,3 +357,6 @@ P3b integration (DESIGN §32.11): sandbox script sets require valid locked bytes
 `content.trusted`. Execution mode is bound to cs through the hashed script descriptors. Mixed script/trusted sets
 are entirely native and require consent [ASSUMED]; trusted classes cannot load in sandbox mode. The page verifies
 same-origin native script responses before import; all gameplay battle simulations run in Workers.
+
+
+AI rehearsal proposals may carry validated stage and tickBudget limits. Host-browser and Worker evaluation and server takeover apply the same deterministic limits; omitted limits preserve exhaustive evaluation. See [Ioleta proposal](../research/ioleta-adaptive-default.md).

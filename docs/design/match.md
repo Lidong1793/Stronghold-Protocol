@@ -129,7 +129,9 @@ combat blocking, healing and damage rules are unchanged.
 Pending Pointing Stick offers use the existing bounty scorer at bot prep entry, immediately after a successful cast,
 and before Ready. The prep's deadline — and the scheduler's fallback when a step of a bot's prep fails — randomly resolves any remaining offer before temp and Ready; a seat that left is eliminated and its offer dropped.
 
-Local owner Ioleta policy (2026-10-15): `band_ioleta` AI (including AI 托管) may upgrade L1 → L2 only with
+Ioleta AI proposal (2026-10-16): experimental procurement and adaptive formation are the defaults for Ioleta AI / takeover; other strategies keep upstream procurement and add the learned candidate. Explicit legacy purchase and formation overrides remain. Ordinary demonstrated R1–13 maps use direction-aware candidate de-duplication, a three-candidate minimum before completed-zero-leak early exit and a deterministic tick budget of 12 per-candidate caps. Server, browser and Worker share the limits and fallback inputs. These [ASSUMED] heuristics change decisions, not official game rules. Sources, costs and measured limitations: [Ioleta proposal](../research/ioleta-adaptive-default.md).
+
+Legacy Ioleta policy (2026-10-15; selected explicitly with botIoletaPolicy: 'legacy'): `band_ioleta` AI (including AI 托管) may upgrade L1 → L2 only with
 at least three deployed elites, and L2 → L3 only with six; free upgrades obey the same gates. From L3 the ordinary
 economy curve applies. Eligibility does not force an upgrade. Affordable shop merges and their reward chains precede
 upgrades; newly acquired elites are arranged before checking the gate, so bench-only elites never unlock it.
@@ -210,3 +212,6 @@ destroyed, consumed, wiped from temp, or removed on elimination — repays that 
 returns its equipment to the hand, so the equipment debt stays. 整备, random grants, 机变 item cards and strategy
 grants that are not an already-shown card stay stock-limited. Rockrock and Flametail use the measured weighted
 subsets described in DATA and §30.2.
+
+
+PR #3 review fix (2026-10-16): Ioleta defers equipment for missing procurement targets only while the existing refresh budget and affordability gate allow another search. With 2 funds and no free refresh it can buy and equip a usable 1-fund item instead of losing unused funds at prep end. Core procurement and upgrade priorities are unchanged.

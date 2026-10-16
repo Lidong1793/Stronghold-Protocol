@@ -13,6 +13,26 @@ import { makeBattle } from '../helpers/battleHarness.js';
 
 const soloBot = (o = {}) => makeMatch({ mode: 'solo', difficulty: 'NORMAL', seats: [{ seat: 0, playerId: 'ai_0', name: 'AI', isBot: true, connected: true }], ...o });
 
+test('road blockers face approaching enemies even when more route tiles lie behind them', (t) => {
+  const { m } = makeMatch({ mode: 'solo', seed: 11 }).start().toPrep();
+  t.after(() => m.dispose());
+  const ps = m.order[0];
+  const piece = give(m, ps, 'chess_char_1_02_a', 'hand');
+  const model = fieldModel(m, ps);
+  model.airflow.clear();
+  const tiles = ['9,7', '9,6', '9,5', '9,4', '9,3'];
+  model.routes = [{ tiles, n: 1, fly: false, hp: 100000, tileTime: 1 }];
+  model.ground = new Map(tiles.map((k) => [k, { flow: 1 }]));
+  const occupied = new Set([...ps.deployMap().keys()].filter((k) => k !== '9,6'));
+  const rec = { ...m.gd.chess(piece.id), rangeGrid: [[0, 0], [0, 1], [0, 2], [0, 3]] };
+  const plan = planLayout(m, ps, [piece], undefined, { occupied, recOf: () => rec });
+  assert.equal(plan.get(piece.uid), '9,6');
+  assert.equal(plan.dirOf(piece.uid), 'RIGHT');
+  model.routes[0].tiles.reverse();
+  const reversed = planLayout(m, ps, [piece], undefined, { occupied, recOf: () => rec });
+  assert.equal(reversed.dirOf(piece.uid), 'LEFT', 'follow actual approach on reversed routes');
+});
+
 test('user: Given two medics with different ranges, When planning a boss formation, Then provide healing coverage to both ranged damage dealers', () => {
   const { m } = makeMatch({ mode: 'coop', humans: 3, difficulty: 'HARD', seed: 204 }).start().toPrep();
   const ps = m.order[0];
@@ -713,7 +733,7 @@ test('rehearsal scripts use a separate budget and error sink; actual starts stil
     for (let i = 0; i < DEFAULT_BUDGET - 1; i++) charge(budget, null, 'preview-budget');
     const before = playerSnapshot(ps);
     const state = m.rngMeta.state();
-    for (let i = 0; i < 3; i++) assert.equal(m._normalOpts(ps, { preview: true }).players[0].testMarker, true);
+    for (let i = 0; i < 3; i++) assert.throws(() => m._normalOpts(ps, { preview: true }), /preview-budget intentional error/);
     assert.deepEqual(playerSnapshot(ps), before);
     assert.equal(m.rngMeta.state(), state);
     assert.equal(budgetUsed(budget, 'preview-budget'), DEFAULT_BUDGET - 1);

@@ -19,7 +19,8 @@ export class MatchCombat {
     try {
       return new this.BattleClass(full);
     } catch (e) {
-      if (!preview) this.reportError(`battle ${opts.fieldId} construct`, e);
+      if (preview) throw e;
+      this.reportError(`battle ${opts.fieldId} construct`, e);
       return new DeadBattle(full, 'forced');
     }
   }
