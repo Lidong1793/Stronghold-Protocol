@@ -202,6 +202,12 @@ test('real HTTP import serves persisted art through app loaders without a servic
   }
 
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="asset-import"]');
+  await page.click('[data-testid="asset-import"]');
+  await page.waitForSelector('[data-testid="asset-import-stored"]');
+  assert.equal(await page.$eval('[data-testid="asset-import-stored"]', el => el.textContent),
+    `已导入 ${files.length} 个素材文件。`, 'persisted count is visible on HTTP without a storage estimate');
+  await page.keyboard.press('Escape');
   const importedPaths = await page.evaluate(async () => [...await (await import('/js/assetCache.js')).listImportedPaths()]);
   for (const url of [...Object.values(urls), mediaUrl, ...(spineEntry ? Object.values(spineEntry) : [])]) {
     assert.ok(importedPaths.includes(url), `${url} persisted in the import index`);

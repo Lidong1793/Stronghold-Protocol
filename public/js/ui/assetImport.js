@@ -216,9 +216,9 @@ export function AssetImportButton() {
         accepted: imported.accepted, rejected: imported.rejected, skipped: imported.skipped, failed: imported.failed,
       })}</p>` : null}
       ${imported.unsupported > 0 ? html`<p class="t-lo">${t('其中 {n} 个因压缩方式不支持被跳过', { n: imported.unsupported })}</p>` : null}
-      ${storeInfo && storeInfo.usage != null ? html`<p class="t-lo">${t('已缓存 {count} 个文件，浏览器存储约 {size} MB。', {
+      ${storeInfo ? html`<p class="t-lo" data-testid="asset-import-stored">${storeInfo.usage != null ? t('已缓存 {count} 个文件，浏览器存储约 {size} MB。', {
         count: storeInfo.count, size: (storeInfo.usage / 1048576).toFixed(1),
-      })}</p>` : null}
+      }) : t('已导入 {count} 个素材文件。', { count: storeInfo.count })}</p>` : null}
       ${persistNote === true ? html`<p class="t-lo">${t('已请求浏览器尽量保留这些素材。')}</p>` : null}
       ${persistNote === false ? html`<p class="t-lo">${t('浏览器可能在存储空间不足时清掉导入的素材。')}</p>` : null}
     <//>

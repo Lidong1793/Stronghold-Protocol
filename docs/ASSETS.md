@@ -624,6 +624,10 @@ On `http://` to a LAN IP, the browser cannot register a service worker or use `c
 
 ## Verification
 
+The import dialog reads the persisted imported-file count whenever it opens, including after a page reload.
+On HTTP, the count is displayed even when the browser does not expose a storage-usage estimate; the current-run
+progress is separate from this persisted count.
+
 `node --test test/assets.test.js` covers the pure helpers: the resolver, the atlas normalizer, the format sniffers, WOFF2, audio banks, the plan id sets, the downloader against a fake network, and the self-heal of corrupt skeletons.
 When `public/assets` exists, the same file also checks the generated output:
 - Every manifest path exists on disk.
