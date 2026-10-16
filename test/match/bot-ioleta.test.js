@@ -12,6 +12,7 @@ function setup(t) {
   const h = makeMatch({ mode: 'solo', difficulty: 'HARD', seed: 11, fake: true }).start().toPrep();
   t.after(() => h.m.dispose());
   const m = h.m, ps = m.order[0];
+  m.botIoletaPolicy = 'legacy';
   ps.bandId = 'band_ioleta';
   for (const slot of ps.shop.slots) if (slot) slot.sold = true;
   ps.shop.freeRefreshes = 0;

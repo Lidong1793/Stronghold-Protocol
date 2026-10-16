@@ -1,0 +1,1154 @@
+{
+  "kind": "Extract of historical ioleta-opus-fast report; not a new benchmark",
+  "sourceReport": "docs/research/ioleta-opus-fast-2026-10-16.json",
+  "sourceReportSHA256": "aa3fe48176cb79a339204086ca8813703cc18bb053a4eb701a99c771f3abb248",
+  "seeds": [
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020
+  ],
+  "records": 100,
+  "settings": {
+    "players": 4,
+    "policy": "experimental",
+    "refinements": [
+      "capacity",
+      "preview"
+    ],
+    "teammateFormation": "legacy",
+    "rehearsal": 3,
+    "lastRound": 11,
+    "noUnite": true
+  },
+  "method": {
+    "subject": "ai_0",
+    "delta": "candidate minus reference; negative means fewer leaks",
+    "missingRounds": "not zero-filled; paired cumulative windows require complete participation in every round",
+    "resamplingUnit": "paired room",
+    "bootstrap": "percentile interval for paired room mean delta",
+    "bootstrapReplicates": 10000,
+    "bootstrapSeed": 381747182,
+    "ci": 0.95,
+    "limitations": "Continuous no-unite trajectories with native formation budgets; no pure-positioning causal claim or full co-op ranking."
+  },
+  "sourceFingerprint": "f835c861dd33540265bc6bbe9c88ecb332a28926ca1a0049096a513f561c526f",
+  "toolFingerprint": "3f8c14383efd56bc8150b650f032346df9a5f0da5b0d2e9413d7af0df6265809",
+  "analysisHash": "f4f34b30b75e481137677826248f9bb6cf99664d20a698b7c0c06aa47da21272",
+  "difficulties": {
+    "HARD": {
+      "contrasts": [
+        {
+          "reference": "learned",
+          "candidate": "adaptive",
+          "windows": {
+            "first10": {
+              "range": [
+                1,
+                10
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 70,
+                  "candidateTotal": 48,
+                  "delta": -22,
+                  "mean": -1.1,
+                  "median": 0,
+                  "best": -9,
+                  "worst": 1,
+                  "improved": 6,
+                  "tied": 13,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1003
+                  ],
+                  "meanDeltaCI95": [
+                    -2.35,
+                    -0.15
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 68,
+                  "candidateTotal": 47,
+                  "delta": -21,
+                  "mean": -1.05,
+                  "median": 0,
+                  "best": -9,
+                  "worst": 1,
+                  "improved": 6,
+                  "tied": 12,
+                  "regressed": 2,
+                  "regressionSeeds": [
+                    1003,
+                    1018
+                  ],
+                  "meanDeltaCI95": [
+                    -2.3,
+                    -0.1
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 2,
+                  "candidateTotal": 1,
+                  "delta": -1,
+                  "mean": -0.05,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 0,
+                  "improved": 1,
+                  "tied": 19,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    -0.15,
+                    0
+                  ]
+                }
+              }
+            },
+            "first11": {
+              "range": [
+                1,
+                11
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 134,
+                  "candidateTotal": 88,
+                  "delta": -46,
+                  "mean": -2.3,
+                  "median": 0,
+                  "best": -17,
+                  "worst": 1,
+                  "improved": 9,
+                  "tied": 10,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1012
+                  ],
+                  "meanDeltaCI95": [
+                    -4.5,
+                    -0.55
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 132,
+                  "candidateTotal": 86,
+                  "delta": -46,
+                  "mean": -2.3,
+                  "median": 0,
+                  "best": -18,
+                  "worst": 1,
+                  "improved": 9,
+                  "tied": 9,
+                  "regressed": 2,
+                  "regressionSeeds": [
+                    1012,
+                    1018
+                  ],
+                  "meanDeltaCI95": [
+                    -4.65,
+                    -0.5
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 2,
+                  "candidateTotal": 2,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 1,
+                  "improved": 1,
+                  "tied": 18,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1016
+                  ],
+                  "meanDeltaCI95": [
+                    -0.15,
+                    0.15
+                  ]
+                }
+              }
+            },
+            "r10": {
+              "range": [
+                10,
+                10
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 3,
+                  "candidateTotal": 3,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 0,
+                  "improved": 0,
+                  "tied": 20,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    0,
+                    0
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 3,
+                  "candidateTotal": 3,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 0,
+                  "improved": 0,
+                  "tied": 20,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    0,
+                    0
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 0,
+                  "candidateTotal": 0,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 0,
+                  "improved": 0,
+                  "tied": 20,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    0,
+                    0
+                  ]
+                }
+              }
+            },
+            "r11": {
+              "range": [
+                11,
+                11
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 64,
+                  "candidateTotal": 40,
+                  "delta": -24,
+                  "mean": -1.2,
+                  "median": 0,
+                  "best": -17,
+                  "worst": 1,
+                  "improved": 5,
+                  "tied": 13,
+                  "regressed": 2,
+                  "regressionSeeds": [
+                    1012,
+                    1013
+                  ],
+                  "meanDeltaCI95": [
+                    -3.05,
+                    0
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 64,
+                  "candidateTotal": 39,
+                  "delta": -25,
+                  "mean": -1.25,
+                  "median": 0,
+                  "best": -18,
+                  "worst": 1,
+                  "improved": 5,
+                  "tied": 13,
+                  "regressed": 2,
+                  "regressionSeeds": [
+                    1012,
+                    1013
+                  ],
+                  "meanDeltaCI95": [
+                    -3.3,
+                    0
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 0,
+                  "candidateTotal": 1,
+                  "delta": 1,
+                  "mean": 0.05,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 1,
+                  "improved": 0,
+                  "tied": 19,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1016
+                  ],
+                  "meanDeltaCI95": [
+                    0,
+                    0.15
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "reference": "contact",
+          "candidate": "adaptive",
+          "windows": {
+            "first10": {
+              "range": [
+                1,
+                10
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 69,
+                  "candidateTotal": 48,
+                  "delta": -21,
+                  "mean": -1.05,
+                  "median": 0,
+                  "best": -6,
+                  "worst": 0,
+                  "improved": 9,
+                  "tied": 11,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    -1.8,
+                    -0.45
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 67,
+                  "candidateTotal": 47,
+                  "delta": -20,
+                  "mean": -1,
+                  "median": 0,
+                  "best": -6,
+                  "worst": 1,
+                  "improved": 9,
+                  "tied": 10,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1018
+                  ],
+                  "meanDeltaCI95": [
+                    -1.75,
+                    -0.35
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 2,
+                  "candidateTotal": 1,
+                  "delta": -1,
+                  "mean": -0.05,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 0,
+                  "improved": 1,
+                  "tied": 19,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    -0.15,
+                    0
+                  ]
+                }
+              }
+            },
+            "first11": {
+              "range": [
+                1,
+                11
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 131,
+                  "candidateTotal": 88,
+                  "delta": -43,
+                  "mean": -2.15,
+                  "median": -1,
+                  "best": -13,
+                  "worst": 1,
+                  "improved": 11,
+                  "tied": 8,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1012
+                  ],
+                  "meanDeltaCI95": [
+                    -3.751249999999999,
+                    -0.8
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 128,
+                  "candidateTotal": 86,
+                  "delta": -42,
+                  "mean": -2.1,
+                  "median": -1,
+                  "best": -13,
+                  "worst": 1,
+                  "improved": 11,
+                  "tied": 7,
+                  "regressed": 2,
+                  "regressionSeeds": [
+                    1012,
+                    1018
+                  ],
+                  "meanDeltaCI95": [
+                    -3.8,
+                    -0.75
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 3,
+                  "candidateTotal": 2,
+                  "delta": -1,
+                  "mean": -0.05,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 0,
+                  "improved": 1,
+                  "tied": 19,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    -0.15,
+                    0
+                  ]
+                }
+              }
+            },
+            "r10": {
+              "range": [
+                10,
+                10
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 4,
+                  "candidateTotal": 3,
+                  "delta": -1,
+                  "mean": -0.05,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 1,
+                  "improved": 2,
+                  "tied": 17,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1008
+                  ],
+                  "meanDeltaCI95": [
+                    -0.2,
+                    0.1
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 4,
+                  "candidateTotal": 3,
+                  "delta": -1,
+                  "mean": -0.05,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 1,
+                  "improved": 2,
+                  "tied": 17,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1008
+                  ],
+                  "meanDeltaCI95": [
+                    -0.2,
+                    0.1
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 0,
+                  "candidateTotal": 0,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 0,
+                  "improved": 0,
+                  "tied": 20,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    0,
+                    0
+                  ]
+                }
+              }
+            },
+            "r11": {
+              "range": [
+                11,
+                11
+              ],
+              "n": 20,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1008,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018,
+                1019,
+                1020
+              ],
+              "excludedSeeds": [],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 62,
+                  "candidateTotal": 40,
+                  "delta": -22,
+                  "mean": -1.1,
+                  "median": 0,
+                  "best": -13,
+                  "worst": 2,
+                  "improved": 5,
+                  "tied": 14,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1012
+                  ],
+                  "meanDeltaCI95": [
+                    -2.6,
+                    -0.05
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 61,
+                  "candidateTotal": 39,
+                  "delta": -22,
+                  "mean": -1.1,
+                  "median": 0,
+                  "best": -13,
+                  "worst": 2,
+                  "improved": 5,
+                  "tied": 14,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1012
+                  ],
+                  "meanDeltaCI95": [
+                    -2.65,
+                    -0.05
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 1,
+                  "candidateTotal": 1,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 0,
+                  "improved": 0,
+                  "tied": 20,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    0,
+                    0
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ABYSS": {
+      "contrasts": [
+        {
+          "reference": "combined",
+          "candidate": "adaptive",
+          "windows": {
+            "first10": {
+              "range": [
+                1,
+                10
+              ],
+              "n": 17,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018
+              ],
+              "excludedSeeds": [
+                1008,
+                1019,
+                1020
+              ],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 180,
+                  "candidateTotal": 139,
+                  "delta": -41,
+                  "mean": -2.411764705882353,
+                  "median": -1,
+                  "best": -11,
+                  "worst": 1,
+                  "improved": 10,
+                  "tied": 5,
+                  "regressed": 2,
+                  "regressionSeeds": [
+                    1003,
+                    1005
+                  ],
+                  "meanDeltaCI95": [
+                    -4.235294117647059,
+                    -0.8823529411764706
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 174,
+                  "candidateTotal": 134,
+                  "delta": -40,
+                  "mean": -2.3529411764705883,
+                  "median": -1,
+                  "best": -11,
+                  "worst": 1,
+                  "improved": 10,
+                  "tied": 5,
+                  "regressed": 2,
+                  "regressionSeeds": [
+                    1003,
+                    1005
+                  ],
+                  "meanDeltaCI95": [
+                    -4.0588235294117645,
+                    -0.8823529411764706
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 6,
+                  "candidateTotal": 5,
+                  "delta": -1,
+                  "mean": -0.058823529411764705,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 0,
+                  "improved": 1,
+                  "tied": 16,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    -0.17647058823529413,
+                    0
+                  ]
+                }
+              }
+            },
+            "first11": {
+              "range": [
+                1,
+                11
+              ],
+              "n": 17,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018
+              ],
+              "excludedSeeds": [
+                1008,
+                1019,
+                1020
+              ],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 276,
+                  "candidateTotal": 257,
+                  "delta": -19,
+                  "mean": -1.1176470588235294,
+                  "median": -1,
+                  "best": -11,
+                  "worst": 10,
+                  "improved": 9,
+                  "tied": 2,
+                  "regressed": 6,
+                  "regressionSeeds": [
+                    1002,
+                    1003,
+                    1004,
+                    1005,
+                    1013,
+                    1016
+                  ],
+                  "meanDeltaCI95": [
+                    -3.5294117647058822,
+                    1.2352941176470589
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 269,
+                  "candidateTotal": 250,
+                  "delta": -19,
+                  "mean": -1.1176470588235294,
+                  "median": -1,
+                  "best": -11,
+                  "worst": 10,
+                  "improved": 9,
+                  "tied": 3,
+                  "regressed": 5,
+                  "regressionSeeds": [
+                    1002,
+                    1004,
+                    1005,
+                    1013,
+                    1016
+                  ],
+                  "meanDeltaCI95": [
+                    -3.411764705882353,
+                    1.1764705882352942
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 7,
+                  "candidateTotal": 7,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 1,
+                  "improved": 1,
+                  "tied": 15,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1003
+                  ],
+                  "meanDeltaCI95": [
+                    -0.17647058823529413,
+                    0.17647058823529413
+                  ]
+                }
+              }
+            },
+            "r10": {
+              "range": [
+                10,
+                10
+              ],
+              "n": 17,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018
+              ],
+              "excludedSeeds": [
+                1008,
+                1019,
+                1020
+              ],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 21,
+                  "candidateTotal": 15,
+                  "delta": -6,
+                  "mean": -0.35294117647058826,
+                  "median": 0,
+                  "best": -2,
+                  "worst": 1,
+                  "improved": 4,
+                  "tied": 12,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1005
+                  ],
+                  "meanDeltaCI95": [
+                    -0.7647058823529411,
+                    0
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 21,
+                  "candidateTotal": 15,
+                  "delta": -6,
+                  "mean": -0.35294117647058826,
+                  "median": 0,
+                  "best": -2,
+                  "worst": 1,
+                  "improved": 4,
+                  "tied": 12,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1005
+                  ],
+                  "meanDeltaCI95": [
+                    -0.7647058823529411,
+                    0
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 0,
+                  "candidateTotal": 0,
+                  "delta": 0,
+                  "mean": 0,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 0,
+                  "improved": 0,
+                  "tied": 17,
+                  "regressed": 0,
+                  "regressionSeeds": [],
+                  "meanDeltaCI95": [
+                    0,
+                    0
+                  ]
+                }
+              }
+            },
+            "r11": {
+              "range": [
+                11,
+                11
+              ],
+              "n": 17,
+              "seeds": [
+                1001,
+                1002,
+                1003,
+                1004,
+                1005,
+                1006,
+                1007,
+                1009,
+                1010,
+                1011,
+                1012,
+                1013,
+                1014,
+                1015,
+                1016,
+                1017,
+                1018
+              ],
+              "excludedSeeds": [
+                1008,
+                1019,
+                1020
+              ],
+              "metrics": {
+                "leaks": {
+                  "referenceTotal": 96,
+                  "candidateTotal": 118,
+                  "delta": 22,
+                  "mean": 1.2941176470588236,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 10,
+                  "improved": 2,
+                  "tied": 11,
+                  "regressed": 4,
+                  "regressionSeeds": [
+                    1002,
+                    1004,
+                    1013,
+                    1016
+                  ],
+                  "meanDeltaCI95": [
+                    0.058823529411764705,
+                    2.8823529411764706
+                  ]
+                },
+                "ordinaryLeaks": {
+                  "referenceTotal": 95,
+                  "candidateTotal": 116,
+                  "delta": 21,
+                  "mean": 1.2352941176470589,
+                  "median": 0,
+                  "best": -1,
+                  "worst": 10,
+                  "improved": 3,
+                  "tied": 10,
+                  "regressed": 4,
+                  "regressionSeeds": [
+                    1002,
+                    1004,
+                    1013,
+                    1016
+                  ],
+                  "meanDeltaCI95": [
+                    0,
+                    2.823529411764706
+                  ]
+                },
+                "bountyLeaks": {
+                  "referenceTotal": 1,
+                  "candidateTotal": 2,
+                  "delta": 1,
+                  "mean": 0.058823529411764705,
+                  "median": 0,
+                  "best": 0,
+                  "worst": 1,
+                  "improved": 0,
+                  "tied": 16,
+                  "regressed": 1,
+                  "regressionSeeds": [
+                    1003
+                  ],
+                  "meanDeltaCI95": [
+                    0,
+                    0.17647058823529413
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

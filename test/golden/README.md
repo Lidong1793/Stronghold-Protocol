@@ -72,3 +72,31 @@ choices meet. The exact moved scenarios are:
 - Human with AI 托管: `coop2-NORMAL-14-standins`, `coop2-NORMAL-70-diy`, `coop2-NORMAL-4-coverage-standins`, `coop2-NORMAL-3-coverage-diy`.
 
 `coop2-NORMAL-1-unowned-roster` is the one added scenario. The upstream coverage companion seeds 1 and 5 are replaced by the local Ioleta seeds 4 and 3; no battle-only fixture was regenerated for this merge.
+
+## Default Ioleta policy golden moves (2026-10-16, replaces #2)
+
+Switching default Ioleta purchases to experimental and per-player final placement to adaptive intentionally
+changes all 21 match scenarios below (purchases, upgrades, formations and their later rewards/combat/RNG).
+The 267 battle-only scenarios in roster/bonds/fields/standins/diy remain byte-for-byte unchanged.
+
+- `solo-FUNNY-1`
+- `solo-FUNNY-2`
+- `solo-NORMAL-1`
+- `solo-NORMAL-2`
+- `solo-HARD-1`
+- `solo-HARD-2`
+- `solo-ABYSS-1`
+- `solo-ABYSS-2`
+- `coop2-NORMAL-3`
+- `coop2-HARD-4`
+- `coop3-ABYSS-5`
+- `coop4-FUNNY-6`
+- `coop4-ABYSS-7`
+- `coop2-NORMAL-8-serverrun`
+- `solo-HARD-9-boosted`
+- `coop2-ABYSS-10-boosted`
+- `coop2-NORMAL-14-standins`
+- `coop2-NORMAL-70-diy`
+- `coop2-NORMAL-4-coverage-standins`
+- `coop2-NORMAL-3-coverage-diy`
+- `coop2-NORMAL-1-unowned-roster`

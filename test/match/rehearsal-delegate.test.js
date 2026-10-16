@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import { PHASE } from '../../shared/constants.js';
 import { validateC2S } from '../../shared/protocol.js';
 import { deriveSeed } from '../../server/sim/rng.js';
-import { RehearsalRun } from '../../server/sim/rehearsal.js';
+import { RehearsalRun, rehearsalLimits } from '../../server/sim/rehearsal.js';
+import { ADAPTIVE_STAGE, ADAPTIVE_CAPS } from '../../server/match/bot.js';
 import { makeMatch, checkInvariants } from './harness.js';
 import { attachRehearsalHost, simulateRehearsal } from './simClient.js';
 
@@ -441,4 +442,45 @@ test('protocol rejects a forged, out-of-range or non-boolean rehearsal answer', 
   assert.equal(typeof validateC2S({ t: 'b.rehearsalResult', taskId: 's.1.0.1', error: false }), 'string');
   assert.equal(typeof validateC2S({ t: 'b.rehearsalResult', taskId: '../x', choice: 0 }), 'string');
   assert.equal(typeof validateC2S({ t: 'b.rehearsalResult', taskId: '', choice: 0 }), 'string');
+});
+
+test('an adaptive rehearsal sends its limits; the browser stops where the server does and the match is the same', () => {
+  /** The co-op match with the adaptive formation mode on a taught map. */
+  const adaptive = (o) => {
+    const h = coopMatch(o).setStage('act2autochess_m03');
+    h.m.botFormationEnabled = true;
+    h.m.botFormationMode = 'adaptive';
+    return h;
+  };
+  const play = (h) => {
+    h.run(() => h.ended != null || (h.m.phase === PHASE.SETTLE && h.m.round === 4), { maxSteps: 8e6 });
+    assert.equal(h.m.errorCount, 0, h.logs.error.join('\n'));
+    checkInvariants(h.m);
+    return stateOf(h.m);
+  };
+  const local = adaptive({ hostId: 'p_0' });
+  attachRehearsalHost(local);
+  const localState = play(local);
+  const h = adaptive({ hostId: 'p_0', botRehearsalDelegate: true });
+  const frames = [];
+  h.onSend.push((pid, msg) => {
+    if (msg.t !== 'b.rehearsal') return;
+    const job = h.m._rehearsalTasks.get(msg.taskId)?.job;
+    frames.push(msg);
+    assert.equal(msg.stage, ADAPTIVE_STAGE);
+    assert.equal(msg.tickBudget, ADAPTIVE_CAPS * msg.cap);
+    const serverPick = (() => {
+      const run = new RehearsalRun(job.inputs.map((o) => () => h.m.newBattle(o)), msg.playerId, msg.cap, rehearsalLimits(msg));
+      run.run();
+      return run.score.index;
+    })();
+    assert.equal(simulateRehearsal(msg, h.m.ds), serverPick, `candidate pick of ${msg.taskId}`);
+  });
+  const host = attachRehearsalHost(h);
+  const state = play(h);
+  assert.ok(frames.length >= 2, `adaptive tasks were delegated (${frames.length})`);
+  assert.equal(host.answered, host.tasks.length);
+  assert.equal(state, localState, 'the same boards, funds and levels as the server-only adaptive run');
+  local.m.dispose();
+  h.m.dispose();
 });
