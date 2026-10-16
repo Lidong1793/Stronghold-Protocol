@@ -102,3 +102,10 @@ node tools/botbench-formations.mjs --groups legacy,learned,optimized --seed 51 -
 
 For a standalone benchmark also pass `--ioleta-policy experimental --refinements preview,capacity`.
 No global runtime default has been switched. See `docs/research/formation-optimization.md` for tradeoffs.
+
+## Upstream 0.3.0 integration (2026-10-16)
+
+Preview, capacity accounting and cheaper-score tie breaking are now unconditional upstream behavior. Their old
+refinement labels remain accepted for command compatibility but no longer perform independent ablations.
+The guards/medics local repair switches and the Ioleta/formation alternatives remain selectable. Reports from
+before this merge are historical; use the source fingerprint to keep old and new cohorts separate.

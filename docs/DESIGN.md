@@ -4,11 +4,12 @@ This is the **single source of truth** for every implementer. Research lives in 
 
 Language: player-facing text is **Simplified Chinese** by default, with an English switch since 0.2.0 (§25.2, docs/I18N.md: UI strings through `t('中文')`, game texts from the official Chinese data or the official EN client's). Code, comments and identifiers are English.
 
-Versions: the first public release was **0.1.0** (2026-10-02, the state of §0–§20.15); the releases after it add the player feedback and GitHub reports — 0.1.1 §21, 0.1.2 §22, 0.1.3 §23, 0.1.4 §24 — and **0.2.0** (2026-10-07; `CHANGELOG.md`) the maintainability refactor, two languages, 补位, 自选编队 and their fidelity work — §25 — **0.2.1** (2026-10-07) the 联防 battlefield restored, full potential and the GitHub fixes after it — §26 — and **0.2.2** (2026-10-09) per-operator 潜能 / 练度, Japanese voices, the statistics page, 失衡, whole-frame attack timing and the GitHub fixes after 0.2.1 — §27. **0.2.3** (2026-10-10; `package.json`, `shared/constants.js APP_VERSION`) 克莱门莎 and new modules, community fixes, text size, per-operator voices, installation, the opening reroll and local match recovery — §28. **0.2.4** (2026-10-11) the official shared card pool and item stock, Raid revival and #475, and the community fixes after 0.2.3 — §29. **0.2.5** (2026-10-12) fixed gifts and already displayed operator offers under the shared stock, random boss pairing, the official battlefield scenes on the 3D board (optional local art: the full bundle includes them when extracted, a missing scene keeps the metal board; §15, §30.21), the official damage-number option, the 驭械术师 / hit-tile / bot ports and the community fixes after 0.2.4 — §30; its rules supersede the corresponding 0.2.4 ones. **0.2.6** (2026-10-13) the host-bandwidth layers 0 and 1 (no BGM download while the music is silent, WebSocket compression, content-hashed asset URLs with long caching, brotli, WebP guide pages), the official scene light gains, the impostor bounds, the deploy-animation replays, the optional ammo count and the community fixes after 0.2.5 — §31, the state described by this document; its rules supersede the corresponding 0.2.5 ones. The labels v1 / v2 / v2.1–v2.5.2 in §0, §14–§20 and in the BALANCE / SIM comparisons name the design generations and the private playtest builds that came before it; they are kept as history.
+Versions: the first public release was **0.1.0** (2026-10-02, the state of §0–§20.15); the releases after it add the player feedback and GitHub reports — 0.1.1 §21, 0.1.2 §22, 0.1.3 §23, 0.1.4 §24 — and **0.2.0** (2026-10-07; `CHANGELOG.md`) the maintainability refactor, two languages, 补位, 自选编队 and their fidelity work — §25 — **0.2.1** (2026-10-07) the 联防 battlefield restored, full potential and the GitHub fixes after it — §26 — and **0.2.2** (2026-10-09) per-operator 潜能 / 练度, Japanese voices, the statistics page, 失衡, whole-frame attack timing and the GitHub fixes after 0.2.1 — §27. **0.2.3** (2026-10-10; `package.json`, `shared/constants.js APP_VERSION`) 克莱门莎 and new modules, community fixes, text size, per-operator voices, installation, the opening reroll and local match recovery — §28. **0.2.4** (2026-10-11) the official shared card pool and item stock, Raid revival and #475, and the community fixes after 0.2.3 — §29. **0.2.5** (2026-10-12) fixed gifts and already displayed operator offers under the shared stock, random boss pairing, the official battlefield scenes on the 3D board (optional local art: the full bundle includes them when extracted, a missing scene keeps the metal board; §15, §30.21), the official damage-number option, the 驭械术师 / hit-tile / bot ports and the community fixes after 0.2.4 — §30; its rules supersede the corresponding 0.2.4 ones. **0.2.6** (2026-10-13) the host-bandwidth layers 0 and 1 (no BGM download while the music is silent, WebSocket compression, content-hashed asset URLs with long caching, brotli, WebP guide pages), the official scene light gains, the impostor bounds, the deploy-animation replays, the optional ammo count and the community fixes after 0.2.5 — §31; its rules supersede the corresponding 0.2.5 ones. **0.3.0** (2026-10-14) the plugin system (插件) and the fixes after 0.2.6 — §32, the state this document describes. The labels v1 / v2 / v2.1–v2.5.2 in §0, §14–§20 and in the BALANCE / SIM comparisons name the design generations and the private playtest builds that came before it; they are kept as history.
 
-Local extensions are integrated with **0.2.6**: the server directory, difficulty matching, public/private rooms,
-immediate empty-room cleanup, optional Texas attack/Sword Rain art and title resource preload with completion history remain. The version uses the upstream
-three-part parser. Battle simulation changes and battle-only golden results come from upstream 0.2.6; the local extensions do not
+Local extensions are integrated with **0.3.0**: the server directory, difficulty matching, public/private rooms,
+five-minute disconnected-room retention and immediate cleanup when the last human leaves remain. The title uses upstream
+download and asset-pack import controls (docs/ASSETS.md). Battle effects use the upstream 0.3.0 official VFX system (§9; docs/ASSETS.md). The version uses
+the upstream three-part parser. The local extensions do not
 change simulation rules. The local AI opening preference (2026-10-15, §6.6) excludes 歌利亚 / 杜宾 and always takes
 an available 伊奥莱塔·罗素; its bot-match golden outcomes follow the new choices while battle-only fixtures stay unchanged.
 The accepted replacement [Ioleta strategy rules](IOLETA-POLICY.md) (2026-10-16) have an opt-in experimental implementation:
@@ -19,9 +20,9 @@ and favours three-member 坚守 / 精准 / 奥术 with member and completion bon
 
 ---
 
-The opt-in experimental Ioleta + original formation combination now defaults to the verified upstream preview and
-hand-capacity ports; the global policy remains unchanged. Independent ablations, early/late round windows and
-results are documented in [AI refinements](research/ai-refinements.md), with the contract in §6.6.
+Upstream 0.3.0 preview isolation, hand-capacity accounting and cheaper-score tie breaking now apply to all AI
+policies. Local Ioleta and learned formation controls remain available; archived ablation reports describe the
+pre-integration implementation, not performance measurements of this merged version. See §6.6.
 
 ## Where each section lives
 
@@ -53,3 +54,5 @@ normative lines it rewrote).
 | §29 | [history/0.2.4.md](history/0.2.4.md) | 0.2.4 — after the 0.2.3 release (2026-10-11) |
 | §30 | [history/0.2.5.md](history/0.2.5.md) | 0.2.5 — after the 0.2.4 release (2026-10-12) |
 | §31 | [history/0.2.6.md](history/0.2.6.md) | 0.2.6 — after the 0.2.5 release (2026-10-13) |
+| §32 | [history/0.3.0.md](history/0.3.0.md) | 0.3.0 — the plugin system (插件) and the fixes after 0.2.6 (2026-10-14) |
+| §33 | [design/vfx-format.md](design/vfx-format.md) | Official battle effects (特效): the extracted format the runtime reads |

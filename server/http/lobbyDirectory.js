@@ -9,7 +9,13 @@ export function lobbyReport({ startedAt, registry, lobby }) {
     const players = room.seats.filter((seat) => seat && !seat.left);
     const inMatch = !!room.match;
     const capacity = room.mode === 'solo' ? 1 : MAX_SEATS;
-    const phase = inMatch ? room.match.phase || PHASE.INFO_CHECK : PHASE.LOBBY;
+    // Gameplay-plugin matches run behind MatchProxy, which has no phase or round fields.
+    let publicView = null;
+    if (inMatch && room.matchCtx?.lastPublic) {
+      try { publicView = JSON.parse(room.matchCtx.lastPublic); } catch { /* the match has not published a usable view */ }
+    }
+    const phase = inMatch ? room.match.phase || publicView?.phase || PHASE.INFO_CHECK : PHASE.LOBBY;
+    const round = room.match?.round ?? publicView?.round;
     return {
       directoryId: room.directoryId,
       number: String(room.number).padStart(4, '0'),
@@ -23,7 +29,7 @@ export function lobbyReport({ startedAt, registry, lobby }) {
       spectatorCapacity: MAX_SPECTATORS,
       inMatch,
       phase,
-      round: inMatch && Number.isInteger(room.match.round) ? room.match.round : 0,
+      round: inMatch && Number.isInteger(round) ? round : 0,
       canJoin: room.mode === 'coop' && !inMatch && room.freeSeat() >= 0,
       canSpectate: room.mode === 'coop' && room.spectators.length < MAX_SPECTATORS,
       createdAt: room.createdAt,

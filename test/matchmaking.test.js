@@ -310,6 +310,19 @@ test('directory uses stable sequential numbers and opaque identifiers, without l
   assert.equal(lobby.enterPublic(player(), { directoryId: c.directoryId, spectate: false }).ok, true);
 });
 
+test('directory reads a gameplay-plugin match phase and round from its latest public frame', t => {
+  const { lobby, player, create, report } = fixture(t);
+  const room = create(player());
+  // MatchProxy keeps the match in a worker and exposes neither phase nor round.
+  room.match = { hosted: true, dispose() {} };
+  room.matchCtx = { lastPublic: null };
+  assert.equal(report().rooms[0].round, 0, 'before the first public frame');
+  lobby.matchBroadcast(room, room.matchCtx, { t: 'm.public', phase: 'PREP', round: 7 });
+  const listed = report().rooms[0];
+  assert.equal(listed.phase, 'PREP');
+  assert.equal(listed.round, 7);
+});
+
 test('matching joins an available public room of the exact difficulty immediately', t => {
   const { lobby, player, create } = fixture(t);
   create(player(), 'HARD');
