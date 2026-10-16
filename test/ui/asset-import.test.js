@@ -626,8 +626,9 @@ test('site CSP keeps worker-src self and blob, and the sim worker policy does no
   assert.equal(tokens.some((token) => token === '*' || token.startsWith('http:') || token.startsWith('https:')), false);
   assert.equal(SIM_WORKER_CSP.includes('worker-src'), false);
   assert.equal(SIM_WORKER_CSP.includes('/sw.js'), false);
-  assert.equal(importSupport({ serviceWorker: {} }, false).reason, 'insecure');
-  assert.equal(importSupport({}, true).ok, false);
+  assert.equal(importSupport({}, false, { indexedDB: { open() {} } }).ok, true);
+  assert.equal(importSupport({}, true, { caches: { open() {} } }).ok, true);
+  assert.equal(importSupport({}, false, {}).reason, 'unsupported');
 });
 
 test('mergeLocalManifests: the effects manifest\'s groups join the local ones for the import plan (DESIGN §33)', async () => {

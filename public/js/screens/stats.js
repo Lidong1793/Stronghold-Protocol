@@ -34,6 +34,8 @@ import {
   trophyMedalOf, strategyBadgeIds, bondMemberChess, highestBondRecord,
 } from '../ui/stats.js';
 import { t, N_ } from '../../../shared/i18n.js';
+import { loadAssetImage } from '../importedAssets.js';
+import { installAssetFonts } from '../assetFonts.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -138,13 +140,11 @@ function ModdedSwitch({ agg }) {
 function Overview({ agg, gd, nickname, records }) {
   useData('chess', 'items', 'backups');
   const rows = DIFFICULTIES.filter((d) => agg.byDifficulty[d]).concat(Object.keys(agg.byDifficulty).filter((d) => !DIFFICULTIES.includes(d)));
-  const fonts = uiUrl(gd.m, 'statistics/fontStyles');
   const titles = (Array.isArray(gd.config?.titles) ? gd.config.titles : []).map((x) => ({ ...x, count: agg.titles[x.id]?.count || 0 }));
   // records whose room mode is unknown (`roomMode` null) count in the total but in neither mode row
   const unknownMode = Math.max(0, agg.count - agg.byMode.solo.games - agg.byMode.coop.games);
   return html`<${Section} title=${t('总览')} micro="OVERVIEW">
     <${ModdedSwitch} agg=${agg} />
-    ${fonts ? html`<link rel="stylesheet" href=${fonts} />` : null}
     <div class="st-overview-details">
       <div class="st-mode-summary">
         <div class="st-profile">
@@ -274,13 +274,12 @@ function TitleHexagon({ titles, manifest }) {
   const [loadedArt, setLoadedArt] = useState([]);
   useEffect(() => {
     let active = true;
-    const images = [mask, glow].filter(Boolean).map((url) => {
-      const image = new Image();
-      image.onload = () => { if (active) setLoadedArt((loaded) => loaded.includes(url) ? loaded : [...loaded, url]); };
-      image.src = url;
-      return image;
-    });
-    return () => { active = false; for (const image of images) image.onload = null; };
+    for (const url of [mask, glow].filter(Boolean)) {
+      void loadAssetImage(url).then((image) => {
+        if (active && image) setLoadedArt((loaded) => loaded.includes(url) ? loaded : [...loaded, url]);
+      });
+    }
+    return () => { active = false; };
   }, [mask, glow]);
   return html`<div class=${cx('st-titlehex', mask && loadedArt.includes(mask) && 'has-reference-mask')} role="group" aria-label=${t('称号')}
     style=${{ '--st-title-mask': mask ? `url("${mask}")` : undefined, '--st-title-glow': glow && loadedArt.includes(glow) ? `url("${glow}")` : undefined }}>
@@ -328,13 +327,11 @@ function MatchRecords({ maxima, manifest }) {
 /** 盟约&策略: top-three active settlement alliances and strategies, followed by the existing strategy table. */
 function Bands({ agg, gd, records }) {
   useData('chess');
-  const fonts = uiUrl(gd.m, 'statistics/fontStyles');
   const badges = strategyBadgeIds(records, data.get('bands'));
   const rows = Object.entries(agg.bands).sort((a, b) => (b[1].games - a[1].games) || (b[1].wins - a[1].wins));
   const bonds = Object.entries(agg.bonds).sort((a, b) => (b[1].games - a[1].games) || a[0].localeCompare(b[0]));
   const members = bondMemberChess(gd.list('chess'), bonds[0]?.[0]);
   return html`<${Section} title=${t('盟约&策略')} micro="ALLIANCES / STRATEGIES">
-    ${fonts ? html`<link rel="stylesheet" href=${fonts} />` : null}
     <${RecordHeading} title=${t('盟约记录')} manifest=${gd.m} />
     <h4 class="st-sub st-favorites__heading">${t('最常使用的盟约')}</h4>
     ${bonds.length ? html`<div class="st-top-bonds">
@@ -482,6 +479,8 @@ function Replay({ rec, onBack }) {
 function StatsScreen({ tab }) {
   const ready = useData('config', 'bands', 'bonds', 'assets');
   const gd = useMemo(() => makeLookups(ready), [ready, data.locale()]);
+  const numberFont = uiUrl(gd.m, 'statistics/numberFont');
+  const labelFont = uiUrl(gd.m, 'statistics/labelFont');
   const [stats, setStats] = useState(() => loadStats());
   const [replay, setReplay] = useState(null);
   const boxRef = useRef(null);
@@ -491,6 +490,14 @@ function StatsScreen({ tab }) {
   const inMatch = useStore((s) => selectRoute(s) === 'game');
   const nickname = useStore((s) => s.me.name);
   useDocClass('sp-stats-open');
+
+  useEffect(() => {
+    if (!numberFont && !labelFont) return;
+    void installAssetFonts({ fonts: { faces: {
+      number: { family: 'Official Stats Numerals', weight: 400, woff2: numberFont },
+      label: { family: 'Official Stats Labels', weight: 400, woff2: labelFont },
+    } } });
+  }, [numberFont, labelFont]);
 
   // a match starting (the host pressed 开始) takes the player to its briefing: the overlay must not sit on top of it
   useEffect(() => { if (inMatch) closeStats(); }, [inMatch]);

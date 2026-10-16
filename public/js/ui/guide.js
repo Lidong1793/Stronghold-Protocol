@@ -18,6 +18,7 @@ import { html, Icon, MicroLabel, Button, Spinner } from './components.js';
 import { createStore, useStore } from '../store.js';
 import { data, useData, artUrls, nextArtUrl } from '../data.js';
 import { t, N_ } from '../../../shared/i18n.js';
+import { loadAssetImage } from '../importedAssets.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -100,10 +101,7 @@ export function GuideButton({ class: cls, size = 'sm', variant = 'ghost', label 
 
 function preload(url) {
   if (!url || typeof Image === 'undefined') return;
-  const img = new Image();
-  img.decoding = 'async';
-  img.crossOrigin = 'anonymous';
-  img.src = url;
+  void loadAssetImage(url);
 }
 
 /** Fallback body when no tutorial page can be shown: the official tips as a numbered list. */

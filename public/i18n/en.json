@@ -1821,7 +1821,7 @@
   "选择文件夹": "Choose folder",
   "选择 zip": "Choose zip",
   "或把文件夹 / zip 拖到这里": "Or drop a folder or zip here",
-  "导入需要 HTTPS 或 localhost。当前是 http 地址，浏览器不允许 Service Worker，所以不能导入。": "Import needs HTTPS or localhost. This page is plain HTTP, so the browser does not allow a service worker and import is unavailable.",
+  "浏览器本地存储不可用，无法导入素材。": "Browser local storage is unavailable, so asset import cannot be used.",
   "此浏览器不能导入本地素材。": "This browser cannot import local assets.",
   "正在读取素材包…": "Reading the asset pack…",
   "正在校验并写入…": "Checking and storing…",

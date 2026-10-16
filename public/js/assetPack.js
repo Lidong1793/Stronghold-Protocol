@@ -17,6 +17,8 @@
 
 import { splitHashedPath } from '../../shared/assetPaths.js';
 import { mediaUrl } from './media.js';
+import { importedAssetStorage } from './assetImportDb.js';
+import { sha256Hex } from './sha256.js';
 import { IMPORTED_ASSET_CACHE, addImportedPaths, putImportedAsset } from './assetCache.js';
 
 export const MAX_ZIP_ENTRIES = 500_000;
@@ -344,10 +346,7 @@ export function detectAssetPrefix(paths, rels) {
 
 /** First 16 hex digits of SHA-256, the same truncation as server/http/assetIndex.js `hash16`. */
 export async function sha256Hex16(data) {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
-  let hex = '';
-  for (let i = 0; i < 8; i++) hex += digest[i].toString(16).padStart(2, '0');
-  return hex;
+  return (await sha256Hex(data)).slice(0, 16);
 }
 
 /** Model hash: SHA-256 of the members' file hashes joined by newlines, then the first 16 hex digits. */
@@ -519,7 +518,7 @@ const idleState = () => ({
  */
 export function createAssetImport({
   fetch: doFetch = (...args) => globalThis.fetch(...args),
-  caches: cachesApi = globalThis.caches,
+  caches: cachesApi = importedAssetStorage,
 } = {}) {
   let state = idleState();
   let phase = 'idle';

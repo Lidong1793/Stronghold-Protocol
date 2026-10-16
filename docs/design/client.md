@@ -6,8 +6,8 @@ Part of [DESIGN.md](../DESIGN.md) (the index; section numbers are global).
 
 Title asset controls: 下载完整素材 reads the served manifests and downloads their art through ordinary browser HTTP caching;
 progress, pause, resume and retry are documented in [ASSETS.md](../ASSETS.md#player-initiated-predownload). 导入素材包
-validates local files against the served hashes and stores accepted assets in Cache Storage for the service worker.
-Import requires HTTPS or localhost; the download also works over plain HTTP.
+validates local files against the served hashes and stores accepted assets in browser storage (Cache Storage with a service worker on secure origins; IndexedDB with direct UI lookup on HTTP).
+Import and download also work over plain HTTP when browser local storage is available.
 
 Local lobby matching (2026-10-12): the directory opens a matching screen with the existing protocol header and
 difficulty cards. Start/cancel use `match.start` / `match.cancel`; the server owns the 30-second deadline and room
@@ -259,8 +259,9 @@ bytes read, pause/resume and failed-file retry. Do not mark completion until eve
 missing server files remain visible failures. Closing the dialog pauses the queue. Cache eviction and refreshes
 do not retain a permanent completion flag. The same dialog can import a local folder or zip. Only bytes whose
 SHA-256 matches the served manifest are kept (a Spine model only as a whole group). They are stored in Cache
-Storage and served by `public/sw.js` for hashed `/assets/`, `/fonts/` and `/media/` URLs alone. Import requires
-HTTPS or localhost. Files already imported are not requested again. See [ASSETS.md](../ASSETS.md#player-initiated-predownload).
+Storage and served by `public/sw.js` for hashed `/assets/`, `/fonts/` and `/media/` URLs alone on secure origins.
+On HTTP they are stored in IndexedDB after JavaScript SHA-256 verification; UI images and inline backgrounds resolve imported bytes before assigning URLs. Files already imported are not requested again. See [ASSETS.md](../ASSETS.md#player-initiated-predownload).
+Self-hosted fonts load after the hashed asset manifest arrives: the client fetches imported font bytes and installs each `FontFace` from an ArrayBuffer, instead of requesting the original `/fonts/fonts.css` during page startup. The statistics page loads its own two listed fonts on opening through the same path.
 
 `tools/local-extract/extract.py` (Python: UnityPy + lz4 + Pillow; decodes Arknights' custom **LZ4AK** bundle compression via `aklz4.py`) extracts the art the web download does not include (some of it, most official HUD sprites among it, is on the public mirror too — §22.5) from a locally installed client (CrossOver Windows build or PlayCover iOS build) into `public/assets/local/**` and writes `data/local-assets.json` (`{ groups: { '<subdir>': { name: { path, w, h, kind } } } }`). Everything here is **optional**: clients must render correctly when the file or any entry is missing (fall back to the web assets / procedural art). The emotes and the guide pages below are on the public mirror too (§22.5): fetch-assets downloads them (data/assets.json `ui['emoticon/<dir>/<picId>']`, `ui['guide/<key>']`) and the client shows the local copy first, then that one (`data.js artUrls`); docs/DEPLOY.md §6 lists what still needs the client.
 - `map/autochess/TX_autochessi_*` — the real autochess board atlas (`_D` diffuse 2048² with floor tiles, gold-framed high-ground plates, REINFORCEMENTS bench pads, EQUIPMENTS pads, crates, gates; `_N/_M/_E` normal/mask/emission; `common_D` device icons; `BG` backdrop). `map/autochesssand/*` — the textures and materials of the sand theme (the theme of nine of the eleven battlefield scenes, §15).
@@ -372,8 +373,8 @@ The install button appears only for a live browser install offer and hides
 in standalone/fullscreen windows or after installation. Every offer is consumed before awaiting the prompt, including
 cancellation or failure. The install button does not register a service worker and does not make the server available
 offline. A separate asset-only worker (`public/sw.js`) may be registered on HTTPS or localhost to serve imported
-hashed art from Cache Storage; it does not intercept the page, scripts, `/data/`, `/sim/` or `/ws`. HTTPS or
-localhost and browser support still govern installation.
+hashed art from Cache Storage; it does not intercept the page, scripts, `/data/`, `/sim/` or `/ws`. On plain HTTP,
+imported art is kept in IndexedDB and read directly by the client UI. HTTPS or localhost and browser support still govern installation.
 
 ### Skill-mode sound and delayed models (§28.17, §28.22)
 

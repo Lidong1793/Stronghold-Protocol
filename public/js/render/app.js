@@ -533,6 +533,11 @@ export async function createFieldView(host, options = {}) {
     for (const v of views.values()) if (v.shadow && !v.destroyed) v.shadow.texture = t;
     for (const v of penViews.values()) if (v.shadow && !v.destroyed) v.shadow.texture = t;
   };
+  const textureFromImage = (url, img) => {
+    const t = P.Texture.from(img);
+    P.Texture.addToCache(t, url);
+    return t;
+  };
   function loadShadow() {
     const url = assets.ui ? assets.ui('battle/sprite_shadow') : null;
     if (url === shadowUrl) return;
@@ -540,18 +545,13 @@ export async function createFieldView(host, options = {}) {
     offShadow?.();
     offShadow = null;
     if (!url) { setShadow(shadowTexture()); return; }
-    try {
-      const t = P.Texture.from(url);
-      const use = () => { if (!destroyed && shadowUrl === url) setShadow(t); };
-      // a cosmetic plugin's sprite that will not load falls back (the manifest changes: loadShadow again)
-      const failed = () => { if (!destroyed) assets.failed?.(url); };
-      if (t.baseTexture.valid) use();
-      else {
-        t.baseTexture.once('loaded', use);
-        t.baseTexture.once('error', failed);
-        offShadow = () => { t.baseTexture.off('loaded', use); t.baseTexture.off('error', failed); };
-      }
-    } catch { /* optional */ }
+    let active = true;
+    offShadow = () => { active = false; };
+    assets.image(url).then((img) => {
+      if (!active || destroyed || shadowUrl !== url) return;
+      if (img) setShadow(textureFromImage(url, img));
+      else assets.failed?.(url);
+    }, () => { if (active && !destroyed) assets.failed?.(url); });
   }
   loadShadow();
   ensureDamageFonts();
@@ -1727,9 +1727,11 @@ export async function createFieldView(host, options = {}) {
         if (cur && now - cur.t < 0.8) { cur.n += n; break; }
         layerPops.set(k, { t: now, n });
         const url = assets.bondIcon ? assets.bondIcon(bondId) : null;
-        let tex = null;
-        if (url) { try { tex = P.Texture.from(url); } catch { tex = null; } }
-        fx.pop(tex, `+${n}`, 0xffffff, layerPops.size);
+        const popIndex = layerPops.size;
+        const img = url ? assets.imageNow?.(url) : null;
+        fx.pop(img ? textureFromImage(url, img) : null, `+${n}`, 0xffffff, popIndex);
+        // The gain text is immediate; a first-use icon warms for subsequent notifications.
+        if (url && !img) void assets.image?.(url).catch(() => {});
         break;
       }
       case 'bounty': {

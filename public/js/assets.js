@@ -51,6 +51,7 @@
 // caller falls back (docs/ASSETS.md "Other fallbacks").
 
 import { cosmetics, createCosmeticLayers, EMPTY_MANIFEST } from './cosmetics.js';
+import { loadAssetImage } from './importedAssets.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const str = (v) => (typeof v === 'string' && v ? v : null);
@@ -564,14 +565,9 @@ export function localAssetUrl(m, group, name) {
 
 /** Default browser image loader. */
 export function loadImageElement(url) {
-  return new Promise((resolve, reject) => {
-    if (typeof Image === 'undefined') { reject(new Error('no Image in this environment')); return; }
-    const img = new Image();
-    img.decoding = 'async';
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`image failed: ${url}`));
-    img.src = url;
+  return loadAssetImage(url).then((img) => {
+    if (!img) throw new Error(`image failed: ${url}`);
+    return img;
   });
 }
 

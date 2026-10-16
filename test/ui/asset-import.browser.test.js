@@ -3,7 +3,7 @@
 // no download); a pack laid out like `node tools/package.mjs --assets` writes it (one folder, public/assets/…, a
 // README.txt) goes in through the dialog's zip picker. Then a one-file zip and a folder-shaped file list are imported,
 // and the server is not asked for those bytes, not even by 下载完整素材. A second page with isSecureContext forced off
-// must say on the title screen and in the dialog why import is unavailable.
+// with browser storage unavailable must explain why import is unavailable.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -64,7 +64,7 @@ function buildStoredZip(files) {
   return out;
 }
 
-test('import has its own dialog that requests nothing on opening; imported art is not fetched again; plain HTTP explains why import is off', {
+test('import has its own dialog that requests nothing on opening; imported art is not fetched again; unavailable browser storage explains why import is off', {
   skip: process.env.SP_E2E !== '1' || !hasChrome(), timeout: 90000,
 }, async (t) => {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
@@ -182,15 +182,16 @@ test('import has its own dialog that requests nothing on opening; imported art i
   const insecure = await browser.newPage();
   await insecure.evaluateOnNewDocument(() => {
     Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+    Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined });
   });
   await insecure.goto(srv.url);
   await insecure.waitForSelector('[data-testid="asset-import"]');
   assert.equal(await insecure.$eval('[data-testid="asset-import"]', (el) => el.textContent.trim()), '导入素材包（暂不可用）');
-  assert.match(await insecure.$eval('#title-asset-import-hint', (el) => el.textContent), /HTTPS/, 'the hint under the button says why');
+  assert.match(await insecure.$eval('#title-asset-import-hint', (el) => el.textContent), /本地存储/, 'the hint under the button says why');
   await insecure.click('[data-testid="asset-import"]');
   await insecure.waitForSelector('[data-testid="asset-import-unavailable"]');
   const reason = await insecure.$eval('[data-testid="asset-import-unavailable"]', (el) => el.textContent);
-  assert.match(reason, /HTTPS/);
+  assert.match(reason, /本地存储/);
   assert.equal(await insecure.$('[data-testid="asset-import-folder"]'), null);
   assert.deepEqual(errors, []);
 });

@@ -19,6 +19,7 @@ import { t } from '../../../shared/i18n.js';
 import { serverNow } from '../store.js';
 import { data, useData, localAsset } from '../data.js';
 import { uiUrl } from './assetUrls.js';
+import { hasImportedArt, ImportedArtElement } from './importedArt.js';
 
 /**
  * h() for htm with its static-subtree cache switched off. htm keeps the vnode it built for a fully static subtree in
@@ -29,6 +30,10 @@ import { uiUrl } from './assetUrls.js';
  */
 export function hFresh(type, props, ...children) {
   if (this && typeof this === 'object') this[0] = 3;
+  if (hasImportedArt(type, props)) {
+    const { ref, ...forwarded } = props;
+    return h(ImportedArtElement, { ...forwarded, elementType: type, forwardedRef: ref }, ...children);
+  }
   return h(type, props, ...children);
 }
 

@@ -82,6 +82,7 @@ import { sanitizeVoiceOverrides, voiceLangFor, VOICE_LANGS, VOICE_TREES, VOICE_P
 export { VOICE_TREES } from './voicePrefs.js';
 import { PHASE } from '../../shared/constants.js';
 import { mediaUrl } from './media.js';
+import { assetFetch } from './importedAssets.js';
 import { unhashedUrl } from '../../shared/assetPaths.js';
 
 const MAX_VOICES = 8;
@@ -795,11 +796,11 @@ export class AudioManager {
       try {
         // Extension-less URL first so download managers leave the BGM alone; a host without /media/ still works.
         const media = mediaUrl(url);
-        let res = await fetch(media);
+        let res = await assetFetch(media);
         if (media !== url && !isAudioResponse(res)) {
           // Drop the unusable response (404, or a 200 that is really index.html) before trying the original URL.
           try { await res.body?.cancel?.(); } catch { /* the fallback request matters more than draining this one */ }
-          res = await fetch(url);
+          res = await assetFetch(url);
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const ab = await res.arrayBuffer();

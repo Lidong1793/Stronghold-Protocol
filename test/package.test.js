@@ -471,7 +471,7 @@ test('the README names the version, the manifests it matches, how to import, and
   const text = assetPackReadme({ version: '0.3.0', files: ['a', 'b'], bytes: { art: 3 * 1048576 }, local: true, fx: true });
   assert.ok(text.startsWith('\ufeff卫戍协议：盟约 v0.3.0 素材包\n'), 'UTF-8 with a BOM');
   for (const s of ['data/assets.json、data/local-assets.json、data/local-fx.json', '「导入素材包」', '「选择 zip」', '「跳过 1 个」',
-    'HTTPS', 'localhost', '"Import asset pack"', 'files that version does not list are skipped', '2 files (3.0 MB)',
+    'http://局域网IP 都可以导入', 'plain http:// LAN address', '"Import asset pack"', 'files that version does not list are skipped', '2 files (3.0 MB)',
     'https://github.com/sganggs/Stronghold-Protocol/blob/v0.3.0/NOTICE.md']) assert.ok(text.includes(s), s);
   const dev = assetPackReadme({ version: '0.3.1-dev', files: [], bytes: { art: 0 }, local: false, fx: false });
   assert.ok(dev.includes('/blob/v0.3.1/NOTICE.md') && !dev.includes('local-fx.json'));

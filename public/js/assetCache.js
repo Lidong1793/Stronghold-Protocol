@@ -9,6 +9,8 @@
 // matched. A Range request is left to the network so audio seeking still reaches the server. What an import stored is
 // also listed in one index entry of the cache (IMPORTED_INDEX_URL): Chrome cannot list a cache that large.
 
+import { importedAssetStorage } from './assetImportDb.js';
+
 /** Cache Storage name. Bump the suffix to drop previously imported bytes on the next activation. */
 export const IMPORTED_ASSET_CACHE = 'sp-imported-assets-v1';
 
@@ -40,11 +42,12 @@ export function shouldServeImportedAsset(request, pageOrigin) {
   return IMPORTED_ASSET_PATH.test(url.pathname);
 }
 
-/** Why import is unavailable, or `{ ok: true }` on a secure context that has the APIs. */
-export function importSupport(nav = globalThis.navigator, secure = globalThis.isSecureContext) {
-  if (!secure) return { ok: false, reason: 'insecure' };
-  if (!nav?.serviceWorker || !globalThis.caches || !globalThis.crypto?.subtle) return { ok: false, reason: 'unsupported' };
-  return { ok: true };
+/** HTTP uses IndexedDB and application loaders; a service worker is optional on HTTPS. */
+export function importSupport(nav = globalThis.navigator, secure = globalThis.isSecureContext, capabilities = globalThis) {
+  try {
+    const available = (secure && capabilities.caches?.open) || capabilities.indexedDB?.open;
+    return nav && available ? { ok: true } : { ok: false, reason: 'unsupported' };
+  } catch { return { ok: false, reason: 'unsupported' }; }
 }
 
 /**
@@ -80,11 +83,13 @@ export function contentTypeFor(url) {
 /** Put one body at each URL. Each put gets its own copy: Cache Storage consumes the body. */
 export async function putImportedAsset(cache, urls, bytes, typeFor = contentTypeFor) {
   const body = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  await Promise.all([...urls].map((url) => {
+  const targets = [...urls];
+  const audioType = targets.map(typeFor).find(type => type.startsWith('audio/'));
+  await Promise.all(targets.map((url) => {
     const copy = body.slice();
     const response = new Response(copy, {
       status: 200,
-      headers: { 'Content-Type': typeFor(url) },
+      headers: { 'Content-Type': audioType && pathnameOf(url).startsWith('/media/') ? audioType : typeFor(url) },
     });
     return cache.put(url, response);
   }));
@@ -127,7 +132,7 @@ async function keyPaths(cache) {
  * Pathnames currently stored for imported art (assets, fonts and the audio /media/ alias): the import's index, else
  * the cache's keys (a cache written without an index); an empty set when neither can be read.
  */
-export async function listImportedPaths(cachesApi = globalThis.caches) {
+export async function listImportedPaths(cachesApi = importedAssetStorage) {
   if (!cachesApi?.open) return new Set();
   try {
     const cache = await cachesApi.open(IMPORTED_ASSET_CACHE);
@@ -155,7 +160,7 @@ export async function addImportedPaths(cache, paths) {
 }
 
 /** How many imported files are stored, counting /assets/ and /fonts/ only (not the /media/ alias). */
-export async function countImportedFiles(cachesApi = globalThis.caches) {
+export async function countImportedFiles(cachesApi = importedAssetStorage) {
   const paths = await listImportedPaths(cachesApi);
   let n = 0;
   for (const path of paths) {
@@ -165,7 +170,7 @@ export async function countImportedFiles(cachesApi = globalThis.caches) {
 }
 
 /** Delete every version of the import cache. The worker stays registered. */
-export async function clearImportedAssets(cachesApi = globalThis.caches) {
+export async function clearImportedAssets(cachesApi = importedAssetStorage) {
   if (!cachesApi?.delete) return false;
   try {
     if (cachesApi.keys) {
