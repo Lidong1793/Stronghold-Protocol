@@ -25,6 +25,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
+    "layout:lab": "node tools/layout-lab.mjs",
     "test": "node --test",
     "golden": "node tools/golden.mjs",
     "golden:update": "node tools/golden.mjs --update",

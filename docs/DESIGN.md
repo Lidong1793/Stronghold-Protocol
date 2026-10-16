@@ -11,10 +11,17 @@ immediate empty-room cleanup, optional Texas attack/Sword Rain art and title res
 three-part parser. Battle simulation changes and battle-only golden results come from upstream 0.2.6; the local extensions do not
 change simulation rules. The local AI opening preference (2026-10-15, §6.6) excludes 歌利亚 / 杜宾 and always takes
 an available 伊奥莱塔·罗素; its bot-match golden outcomes follow the new choices while battle-only fixtures stay unchanged.
+The accepted replacement [Ioleta strategy rules](IOLETA-POLICY.md) (2026-10-16) have an opt-in experimental implementation:
+three 助力 / three 坚守 / two 精准 first, two 助力 / three 坚守 / three 精准 second, with 奥术 / 迅捷 as
+disabled-core-bond alternatives and staged purchase / upgrade / merge decisions. The default runtime
 Ioleta's local AI policy also gates L2/L3 on three/six deployed elites, prioritizes merges and elite retention,
-and softly favours 坚守 / 精准 / 奥术 in close choices (§6.6), without sequential goals or targeted rerolls; other strategies keep the generic economy curve.
+and favours three-member 坚守 / 精准 / 奥术 with member and completion bonuses (§6.6), without sequential goals or targeted rerolls; other strategies keep the generic economy curve.
 
 ---
+
+The opt-in experimental Ioleta + original formation combination now defaults to the verified upstream preview and
+hand-capacity ports; the global policy remains unchanged. Independent ablations, early/late round windows and
+results are documented in [AI refinements](research/ai-refinements.md), with the contract in §6.6.
 
 ## Where each section lives
 

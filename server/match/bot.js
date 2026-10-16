@@ -47,7 +47,10 @@
 //      (act2 m01 blowers) the DPS is scaled by the blower ATK bonus of that direction (with / against / across). The last
 //      arrangement of a prep REHEARSES up to m.botRehearsal distinct layout variants with the real Battle (rehearsal
 //      seed, no meta dispatch, board restored exactly) and keeps the one with the fewest leaks. The default plan is
-//      placed first; Match steps the rehearsal in wall-clock-bounded slices (botPrepBegin → job.run → botPrepEnd) so
+//      supplemented in ordinary R1–13 by one owner-taught formation candidate (botFormation.js), with one extra
+//      rehearsal slot; Boss / Hidden Core planning stays unchanged. The extra candidate draws no bot RNG.
+//      The first candidate is placed provisionally; Match steps the rehearsal in wall-clock-bounded slices
+//      (botPrepBegin → job.run → botPrepEnd) so
 //      whole simulated battles never block the server's event loop. The prep routine itself is sliced the same way:
 //      botPrepBeginSteps / botPrepEndSteps (and planLayoutSteps, arrangeSteps, createRehearsalSteps) are step
 //      generators that yield between whole actions (never with a transient board) — the same actions in the same
@@ -92,6 +95,11 @@ import { mitigate } from '../sim/damage.js';
 import { HOVER_KEYS } from '../sim/content/enemies.js';
 import { attackRangeGrid, loadoutRecord, resolveRecordLoadout } from '../../shared/loadoutRecord.js';
 import { isIoleta, IOLETA_ELITE_VALUE, ioletaBuyBondBonus, ioletaBondScore, ioletaCanLevel } from './botIoleta.js';
+import { formationProfile, formationRole, formationValue, contactValue, resolveFormationMode } from './botFormation.js';
+import { botRefinement } from './botRefinements.js';
+import { experimentalEnabled, refreshExperimentalPlan, experimentalBuyBonus, experimentalBondScore,
+  experimentalCore, experimentalCanLevel, experimentalTarget, experimentalSearchTargets,
+  experimentalBondDisabled, EXPERIMENTAL_ELITE_VALUE } from './botIoletaExperimental.js';
 
 /**
  * Drive a step generator (planLayoutSteps, createRehearsalSteps, arrangeSteps, botPrepBeginSteps …) to its end in one
@@ -391,7 +399,8 @@ export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
   const pool = bondPoolStats(m, ps, owned);
   for (const id of m.gd.bondIds) {
     const b = m.gd.bond(id);
-    if (!b || !b.isCore || m.gd.modeInactiveBonds.has(id)) continue;
+    if (!b || !b.isCore || m.gd.modeInactiveBonds.has(id)
+      || (experimentalEnabled(m, ps) && experimentalBondDisabled(m, ps, id))) continue;
     const k = owned.counts.get(id) || 0;
     if (!k) continue;
     const s = k * 10 + Math.min(4, pool.reach.get(id) || 0) + Math.min(6, (ps.layers[id] || 0) / 10)
@@ -401,7 +410,8 @@ export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
   let second = null;
   let bestK = 0;
   for (const id of m.gd.bondIds) {
-    if (id === focus || m.gd.modeInactiveBonds.has(id)) continue;
+    if (id === focus || m.gd.modeInactiveBonds.has(id)
+      || (experimentalEnabled(m, ps) && experimentalBondDisabled(m, ps, id))) continue;
     const b = m.gd.bond(id);
     if (!b || b.thresholdTemplate === 'count_threshold_downward' || !Array.isArray(b.thresholds) || !b.thresholds.length) continue;
     const k = owned.counts.get(id) || 0;
@@ -454,12 +464,13 @@ function roles(m, ps) {
  * once the focus has 3 owned members a member of another core bond is worth less unless it reaches a threshold (the
  * deploy cap holds about 6 members of one core bond + 2 others).
  */
-function bondValue(m, c, owned, focus, second = null) {
+function bondValue(m, c, owned, focus, second = null, ps = null) {
   let v = 0;
   const committed = focus && (owned.counts.get(focus) || 0) >= 3;
   for (const b of (c && c.bonds) || []) {
     const bond = m.gd.bond(b);
     if (!bond || m.gd.modeInactiveBonds.has(b)) continue;
+    if (ps && experimentalEnabled(m, ps) && experimentalBondDisabled(m, ps, b)) continue;
     const n = owned.counts.get(b) || 0;
     const th = Array.isArray(bond.thresholds) && bond.thresholds.length ? bond.thresholds : [bond.activeCount || 2];
     const w = bond.isCore ? 1.4 : 1;
@@ -510,7 +521,8 @@ function unitBase(m, piece, ctx) {
   const c = chessRec(m, piece.id, ctx.ps);
   if (!c) return 0;
   let v = power(c) + (piece.items ? piece.items.length * 5 : 0);
-  if (isIoleta(ctx.ps) && c.isGolden) v += IOLETA_ELITE_VALUE;
+  if (isIoleta(ctx.ps) && c.isGolden) v += experimentalEnabled(m, ctx.ps) ? EXPERIMENTAL_ELITE_VALUE : IOLETA_ELITE_VALUE;
+  if (experimentalEnabled(m, ctx.ps) && experimentalTarget(m, ctx.ps, piece.id)) v += 8;
   if (m.round <= 11) v += traitsOf(m, c).recurring * 4;
   if (c.attackKind === 'none' && !isHealer(c)) v -= 6;
   if (ctx.fly > 0 && hitsFly(c)) v += 2;
@@ -522,25 +534,27 @@ function unitBase(m, piece, ctx) {
 function pieceValue(m, ps, piece, ctx) {
   const c = chessRec(m, piece.id, ps);
   if (!c) return 0;
-  return unitBase(m, piece, ctx) + bondValue(m, c, ownedBonds(m, ps, piece.uid), ctx.focus, ctx.second) * 0.8;
+  return unitBase(m, piece, ctx) + bondValue(m, c, ownedBonds(m, ps, piece.uid), ctx.focus, ctx.second, ps) * 0.8;
 }
 
 /**
  * Score of a deployed set: unit values + the bonds it activates (exact tiers via bondsMeta.computeBonds, hand
  * members still count for BOARD_AND_DECK bonds) + composition (blockers, anti-air when the wave flies, ≤ 2 healers).
  */
-function lineupBonds(m, ps, set) {
+function lineupBonds(m, ps, set, handSlots = countFree(ps.hand)) {
   const gd = ps?.gd || m.gd;
   const board = new Map();
   set.forEach((p, i) => board.set(`x${i}`, p));
   const inSet = new Set(set.map((p) => p.uid));
   const hand = ps.hand.map((p) => (p && !inSet.has(p.uid) ? p : null));
+  if (botRefinement(m, 'capacity')) hand.push(...[...ps.board.values()]
+    .filter(p => p.kind === 'chess' && !inSet.has(p.uid)).slice(0, handSlots));
   return computeBonds(gd, { board, hand, layers: ps.layers, bondCountBonus: ps.bondCountBonus });
 }
 
-function lineupScore(m, ps, set, ctx) {
+function lineupScore(m, ps, set, ctx, handSlots = countFree(ps.hand)) {
   const gd = ps?.gd || m.gd;
-  const bonds = lineupBonds(m, ps, set);
+  const bonds = lineupBonds(m, ps, set, handSlots);
   let v = 0;
   for (const p of set) v += unitBase(m, p, ctx);
   if (isIoleta(ps)) {
@@ -549,9 +563,10 @@ function lineupScore(m, ps, set, ctx) {
     // [ASSUMED] Translate that shared stat gain into the same power units as the lineup.
     const perElite = gd.band(ps.bandId)?.params?.atk_per_cnt || 0;
     v += elites.length * perElite * elites.reduce((sum, p) => sum + power(gd.chess(p.id)), 0);
-    v += ioletaBondScore(gd, bonds);
+    v += experimentalEnabled(m, ps) ? experimentalBondScore(m, ps, bonds) : ioletaBondScore(gd, bonds);
   }
   for (const [id, b] of Object.entries(bonds)) {
+    if (experimentalEnabled(m, ps) && experimentalBondDisabled(m, ps, id)) continue;
     // every deployed focus member counts on the way to the next threshold (a swap alone never reaches the 6-member tier)
     if (id === ctx.focus) {
       const bond = gd.bond(id);
@@ -632,7 +647,7 @@ function buyScore(m, ps, id, ctx) {
       else s += keep ? 14 : ctx.pairs < MAX_PAIRS && c.tier <= 3 ? 6 : 1;
     }
   }
-  if (!ctx.owned.bases.has(base)) s += bondValue(m, c, ctx.owned, ctx.focus, ctx.second);
+  if (!ctx.owned.bases.has(base)) s += bondValue(m, c, ctx.owned, ctx.focus, ctx.second, ps);
   // role needs
   if (isBlocker(c) && ctx.roles.blockers < 2) s += 10;
   if (hitsFly(c) && ctx.fly > 0 && ctx.roles.antiAir < 2) s += 8;
@@ -641,8 +656,10 @@ function buyScore(m, ps, id, ctx) {
   if (ctx.model && !isHealer(c)) s += ARMOR_WEIGHT * 0.6 * (armorFit(ctx.model, c) - 0.6);
   // the player's own 自选 piece (a slotted slot: its composed record carries diyFor) — AI 托管 of a human with picks
   if (c.diyFor) s += DIY_PIECE_BONUS;
-  if (isIoleta(ps)) {
-    // Independent tie preferences for cards already offered; no target bond or refresh incentive.
+  if (experimentalEnabled(m, ps)) {
+    s += experimentalBuyBonus(m, ps, id, ctx);
+  } else if (isIoleta(ps)) {
+    // Independent three-member goals for offered cards; no targeted refresh incentive.
     if (!ctx.owned.bases.has(base)) s += ioletaBuyBondBonus(gd, c, ctx.owned);
     if (ps.completesChessMerge(id)) s += 24;
     if (c.isGolden) s += IOLETA_ELITE_VALUE;
@@ -953,6 +970,19 @@ class Layout {
     for (const rt of routes) {
       let exp = 0;
       let lastBlock = -Infinity;
+      // [ASSUMED] A road blocker cannot count on hitting the same ground enemy after
+      // it has passed its blocking tile. Prefer exposure on approach (usually RIGHT).
+      // Keep flying exposure and allies' fire independent of this unit's own block.
+      const passedDps = new Map();
+      if (!rt.fly) for (const u of this.units) {
+        if (!u.block || !u.ground || !this.model.ground.has(u.key)) continue;
+        const stop = rt.tiles.indexOf(u.key);
+        if (stop < 0) continue;
+        for (let j = stop + 1; j < rt.tiles.length; j++) {
+          const key = rt.tiles[j];
+          if (u.cover.has(key)) passedDps.set(j, (passedDps.get(j) || 0) + u.dps);
+        }
+      }
       for (let i = 0; i < rt.tiles.length; i++) {
         const k = rt.tiles[i];
         let t = rt.tileTime + (i < 2 && rt.dwell ? rt.dwell : 0);
@@ -963,7 +993,7 @@ class Layout {
           lastBlock = i;
         }
         const c = cover.get(k);
-        if (c) exp += t * (rt.fly ? c.a : c.g);
+        if (c) exp += t * (rt.fly ? c.a : Math.max(0, c.g - (passedDps.get(i) || 0)));
       }
       total += rt.n * (1 - Math.exp(-exp / (p.kill * rt.hp)));
     }
@@ -989,6 +1019,73 @@ export class LayoutPlan extends Map {
   dirOf(uid) { return this.dirs.get(uid) ?? 'RIGHT'; }
 }
 
+/** Every incoming route needs damage on both the occupied tile and the preceding contact tile (upstream #452). */
+export function supportedContact(model, units, key, self = null) {
+  return (model.index.get(key) || []).every(([ri, i]) => {
+    const rt = model.routes[ri];
+    return rt.fly || units.some(ally => ally !== self && ally.ground && !ally.heal && ally.dps > 0
+      && ally.cover.has(key) && ally.cover.has(rt.tiles[Math.max(0, i - 1)]));
+  });
+}
+
+/** [ASSUMED] Local repair candidate, after the whole formation exists. No RNG; no boss/hidden changes.
+ * Keep the old default candidate and replace at most the last variant, so the rehearsal budget does not grow.
+ * Medics additionally retain their current healing coverage; this is stricter than the upstream safety preference.
+ */
+export function repairLayout(m, ps, pieces, plan) {
+  const out = new LayoutPlan(plan);
+  out.dirs = new Map(plan.dirs || []);
+  if (!m.wave || m.round < 1 || m.round > 13 || m.round === m.bossRound || m.round === m.hiddenRound) return out;
+  const model = fieldModel(m, ps), map = ps.deployMap(), gd = ps.gd || m.gd;
+  const layout = new Layout(model, LAYOUT_PARAMS);
+  const records = new Map(pieces.map(p => [p.uid, rangeRec(ps, gd.chess(p.id))]));
+  const units = new Map();
+  for (const p of pieces) {
+    const key = out.get(p.uid), rec = records.get(p.uid);
+    if (!key || !rec) continue;
+    const [r, c] = parseKey(key);
+    const u = unitOf(rec, key, r, c, out.dirOf(p.uid), model);
+    units.set(p.uid, u); layout.units.push(u);
+  }
+  const taken = new Set(out.values());
+  for (const p of pieces) {
+    const rec = records.get(p.uid), unit = units.get(p.uid);
+    if (!unit || p.kind !== 'chess') continue;
+    const guard = botRefinement(m, 'guards') && isBlocker(rec) && rec.rangeGrid?.length === 1
+      && rec.rangeGrid[0].every(v => v === 0) && model.ground.has(unit.key);
+    const medic = botRefinement(m, 'medics') && isHealer(rec) && (rec.stats?.blockCnt ?? 1) > 0;
+    if (!guard && !medic) continue;
+    const safety = key => !model.ground.has(key) ? 2 : supportedContact(model, layout.units, key, unit) ? 1 : 0;
+    if (guard && safety(unit.key) > 0 && !medic) continue;
+    const index = layout.units.indexOf(unit);
+    const healed = medic ? layout.units.filter(u => u !== unit && unit.cover.has(u.key)) : [];
+    let best = unit, bestV = layout.value(), bestSafety = safety(unit.key);
+    for (const [r, c] of legalTiles(map, placeClass(ps, gd.chess(p.id)))) {
+      const key = tileKey(r, c);
+      if (taken.has(key) && key !== unit.key) continue;
+      const safe = safety(key);
+      if (guard && (!model.ground.has(key) || safe < 1)) continue;
+      if (medic && safe <= bestSafety) continue;
+      for (const dir of medic ? PLAN_DIRS : [unit.dir]) {
+        const candidate = unitOf(rec, key, r, c, dir, model);
+        if (healed.some(u => !candidate.cover.has(u.key))) continue;
+        layout.units[index] = candidate;
+        const v = layout.value();
+        layout.units[index] = unit;
+        if (v < bestV) continue;
+        if (v === bestV && best !== unit && safe === bestSafety) continue;
+        best = candidate; bestV = v; bestSafety = safe;
+      }
+    }
+    if (best !== unit) {
+      taken.delete(unit.key); taken.add(best.key);
+      layout.units[index] = best; units.set(p.uid, best);
+      out.set(p.uid, best.key); out.dirs.set(p.uid, best.dir);
+    }
+  }
+  return out;
+}
+
 /**
  * Plan tiles and directions for `pieces` (chess or token pieces with `id`): blockers first, then damage dealers by
  * DPS, then healers and the rest; each takes the legal free (tile, direction) with the best marginal layout value
@@ -1002,13 +1099,27 @@ export function planLayout(m, ps, pieces, params = LAYOUT_PARAMS, opts = {}) {
 }
 
 /** planLayout as a step generator: yields after each placed piece (Match slices a bot's prep, see botPrepBeginSteps). */
-export function* planLayoutSteps(m, ps, pieces, params = LAYOUT_PARAMS, { occupied = new Set(), recOf = null } = {}) {
+export function* planLayoutSteps(m, ps, pieces, params = LAYOUT_PARAMS, { occupied = new Set(), recOf = null, formation = false, formationMode = resolveFormationMode(m) } = {}) {
   const model = fieldModel(m, ps);
   const map = ps.deployMap();
   const pgd = ps.gd || m.gd;
   const rec = recOf || ((p) => (p.kind === 'token' ? pgd.token(p.id) : rangeRec(ps, pgd.chess(p.id))));
   const layout = new Layout(model, params);
-  const rank = (p) => { const r = rec(p); return isBlocker(r) ? 0 : isHealer(r) ? 2 : 1; };
+  const profile = formation && formationProfile(m);
+  const formationScale = profile ? model.routes.reduce((n, rt) => n + rt.n, 0) * 0.3 / Math.max(4, pieces.length) : 0;
+  const mode = formationMode;
+  const contact = profile && ['contact', 'refined'].includes(mode);
+  const score = () => layout.value() + (profile ? formationScale * (formationValue(model, layout.units, profile)
+    + (contact ? contactValue(model, layout.units) : 0)) : 0);
+  // In a taught formation, establish the defence and healing footprint before placing rear dealers.
+  const rank = (p) => {
+    const r = rec(p);
+    if (profile && r) {
+      const role = formationRole(r);
+      return role === 'block' ? 0 : role === 'heal' ? (mode === 'learned' ? 1 : 2) : (mode === 'learned' ? 2 : 1);
+    }
+    return isBlocker(r) ? 0 : isHealer(r) ? 2 : 1;
+  };
   const order = pieces.slice().sort((a, b) => rank(a) - rank(b) || dpsOf(rec(b)) - dpsOf(rec(a)) || a.uid - b.uid);
   const taken = new Set(occupied);
   const out = new LayoutPlan();
@@ -1037,7 +1148,8 @@ export function* planLayoutSteps(m, ps, pieces, params = LAYOUT_PARAMS, { occupi
     for (const [r, c] of legalTiles(map, cls)) {
       const k = tileKey(r, c);
       if (taken.has(k) || (within && !within.has(k)) || (without && without.has(k))) continue;
-      const noise = m.rngBots() * 1e-6;
+      // The extra candidate consumes no random draws; adding it cannot perturb later bot randomness.
+      const noise = profile ? 0 : m.rngBots() * 1e-6;
       const seen = new Set();
       for (const dir of PLAN_DIRS) {
         const u = unitOf(r0, k, r, c, dir, model);
@@ -1046,7 +1158,7 @@ export function* planLayoutSteps(m, ps, pieces, params = LAYOUT_PARAMS, { occupi
         if (seen.has(sig)) continue;
         seen.add(sig);
         layout.units.push(u);
-        const v = layout.value() + noise;
+        const v = score() + noise;
         layout.units.pop();
         if (v > bestV) { bestV = v; best = [k, r, c, dir]; }
         // (the best road tile by the same value)
@@ -1064,6 +1176,36 @@ export function* planLayoutSteps(m, ps, pieces, params = LAYOUT_PARAMS, { occupi
     out.set(p.uid, pick[0]);
     out.dirs.set(p.uid, pick[3]);
     yield;
+  }
+  // Revisit a complete formation: dealers and medics can now see every blocking/contact point.
+  // Strict improvements, stable order, two bounded passes; the original v0.2 and RNG are untouched.
+  if (profile && mode === 'refined') for (let pass = 0; pass < 2; pass++) {
+    let changed = false;
+    for (const p of order) {
+      if (p.kind !== 'chess' || !out.has(p.uid)) continue;
+      const index = layout.units.findIndex(u => u.key === out.get(p.uid));
+      const old = layout.units[index], r0 = rec(p);
+      let best = old, bestV = score();
+      for (const [r, c] of legalTiles(map, placeClass(ps, pgd.chess(p.id)))) {
+        const key = tileKey(r, c);
+        if (taken.has(key) && key !== old.key) continue;
+        const selfOnly = isBlocker(r0) && r0.rangeGrid?.length === 1 && r0.rangeGrid[0].every(v => v === 0);
+        if (selfOnly && model.ground.has(old.key) && !model.ground.has(key)) continue;
+        for (const dir of PLAN_DIRS) {
+          const candidate = unitOf(r0, key, r, c, dir, model);
+          layout.units[index] = candidate;
+          const v = score();
+          if (v > bestV + 1e-9) { best = candidate; bestV = v; }
+        }
+      }
+      layout.units[index] = best;
+      if (best !== old) {
+        taken.delete(old.key); taken.add(best.key);
+        out.set(p.uid, best.key); out.dirs.set(p.uid, best.dir); changed = true;
+      }
+      yield;
+    }
+    if (!changed) break;
   }
   return out;
 }
@@ -1110,8 +1252,8 @@ function countedLeaks(battle, playerId) {
  * @returns {null | { chosen: any[], plans: Array<Map<number, string>>, best: Map<number, string>, done: boolean, run: (budgetMs?: number) => boolean }}
  *   null when there is nothing to compare (no wave, < 2 distinct plans, rehearsal off)
  */
-export function createRehearsal(m, ps, chosen, plans) {
-  return runSteps(createRehearsalSteps(m, ps, chosen, plans));
+export function createRehearsal(m, ps, chosen, plans, limit = m.botRehearsal) {
+  return runSteps(createRehearsalSteps(m, ps, chosen, plans, limit));
 }
 
 /**
@@ -1119,14 +1261,23 @@ export function createRehearsal(m, ps, chosen, plans) {
  * the board, takes the battle input and restores the board exactly before the next yield — a bot prep dropped between
  * two steps (the prep ended) never leaves a rehearsal layout on the board.
  */
-export function* createRehearsalSteps(m, ps, chosen, plans) {
+export function* createRehearsalSteps(m, ps, chosen, plans, limit = m.botRehearsal) {
   const wave = m.wave;
   const distinct = distinctPlans(plans);
   if (!wave || distinct.length < 2 || !(m.botRehearsal > 0)) return null;
-  const cands = distinct.slice(0, m.botRehearsal);
+  const cands = distinct.slice(0, limit);
   const byUid = new Map(chosen.map((p) => [p.uid, p]));
   const battles = [];
   for (const plan of cands) {
+    if (botRefinement(m, 'preview')) {
+      try {
+        const board = new Map([...plan].map(([uid, key]) => [key, { ...byUid.get(uid), dir: planDir(plan, uid) }]));
+        const opts = { ...m._normalOpts(ps, { preview: true, board }), fieldId: `r:${ps.playerId}` };
+        battles.push(m.newBattle(opts, { preview: true }));
+      } catch { break; } // discard failed estimates without touching live diagnostics
+      yield;
+      continue;
+    }
     const saved = [...ps.board.entries()];
     // the candidate's directions are set on the pieces while its input is taken; restored exactly afterwards
     const savedDirs = new Map([...byUid.values(), ...saved.map(([, p]) => p)].map((p) => [p, Object.hasOwn(p, 'dir') ? { v: p.dir } : null]));
@@ -1193,7 +1344,7 @@ export function* createRehearsalSteps(m, ps, chosen, plans) {
             }
           }
         } catch (e) {
-          m.log.warn?.(`[match ${m.roomCode}] bot rehearsal failed: ${e && e.message}`);
+          if (!botRefinement(m, 'preview')) m.log.warn?.(`[match ${m.roomCode}] bot rehearsal failed: ${e && e.message}`);
         }
         battles[i] = null;
         i++;
@@ -1210,8 +1361,8 @@ export function* createRehearsalSteps(m, ps, chosen, plans) {
  * Synchronous rehearsal (tools, tests): see createRehearsal. The board is restored exactly afterwards.
  * @returns {Map<number, string>} the chosen plan
  */
-export function rehearse(m, ps, chosen, plans) {
-  const job = createRehearsal(m, ps, chosen, plans);
+export function rehearse(m, ps, chosen, plans, limit = m.botRehearsal) {
+  const job = createRehearsal(m, ps, chosen, plans, limit);
   if (!job) return distinctPlans(plans)[0] || plans[0];
   job.run();
   return job.best;
@@ -1240,7 +1391,11 @@ function context(m, ps) {
   const copies = copyCounts(m, ps);
   let pairs = 0;
   for (const [b, k] of copies) if (k + 1 >= mergeNeed(m, b)) pairs++;
-  return { ps, owned, focus: plan.focus, second: plan.second, keep: keeperBases(m, ps, plan), copies, pairs, roles: roles(m, ps), fly: model.flyTotal, model };
+  const keep = keeperBases(m, ps, plan);
+  if (experimentalEnabled(m, ps)) {
+    for (const p of ps.allChess()) if (experimentalCore(m, ps, p.id)) keep.add(m.gd.baseIdOf(p.id));
+  }
+  return { ps, owned, focus: plan.focus, second: plan.second, keep, copies, pairs, roles: roles(m, ps), fly: model.flyTotal, model };
 }
 
 /** Normal copies owned per base (board, hand, temp). */
@@ -1318,7 +1473,8 @@ function lineupGain(m, ps, id, ctx, cur) {
   for (let i = 0; i < cur.set.length; i++) {
     const trial = cur.set.slice();
     trial[i] = probe;
-    best = Math.max(best, lineupScore(m, ps, trial, ctx));
+    best = Math.max(best, lineupScore(m, ps, trial, ctx,
+      Math.max(0, countFree(ps.hand) - (botRefinement(m, 'capacity') ? 1 : 0))));
   }
   return best - cur.score;
 }
@@ -1387,6 +1543,7 @@ export function botPrepBegin(m, ps) {
  */
 export function* botPrepBeginSteps(m, ps) {
   if (!ps.alive || ps.ready) return null;
+  if (experimentalEnabled(m, ps)) refreshExperimentalPlan(m, ps);
   m.autoPickPersonalChoice(ps, 'bot');
   // 1. reward offers (free)
   takeOffers(m, ps);
@@ -1457,7 +1614,8 @@ export function botPrep(m, ps) {
  */
 function maybeFreeze(m, ps) {
   if (ps.shop.frozen) return;
-  if (ps.shop.slots.some((s) => s && !s.sold && s.kind === 'chess' && ps.priceOf(s) > ps.funds && ps.completesChessMerge(s.id))) tryDo(() => ps.freeze());
+  if (ps.shop.slots.some((s) => s && !s.sold && s.kind === 'chess' && ps.priceOf(s) > ps.funds && ps.completesChessMerge(s.id)
+    && (!experimentalEnabled(m, ps) || experimentalCore(m, ps, s.id) || buyScoreOf(m, ps, s.id) >= 60))) tryDo(() => ps.freeze());
 }
 
 /** Whether level `lv` of the 调度中心 opens one of the player's slotted 自选 pieces with copies left (player/diy.js). */
@@ -1471,6 +1629,14 @@ export function diyOpensAt(ps, lv) {
 /** The 调度中心 level-ups of a bot's prep (exported for tests). */
 export function levelUp(m, ps, { spare = false } = {}) {
   const gd = ps?.gd || m.gd;
+  if (experimentalEnabled(m, ps)) {
+    if (!experimentalCanLevel(m, ps) || ps.offers.length) return;
+    if (ps.shop.slots.some(s => s && !s.sold && s.kind === 'chess' && ps.priceOf(s) <= ps.funds
+      && ps.completesChessMerge(s.id) && experimentalCore(m, ps, s.id))) return;
+    // One step per pass: no free-upgrade cascade past the next stage's core targets.
+    tryDo(() => ps.levelUp());
+    return;
+  }
   for (let guard = 0; guard < 6; guard++) {
     if (ps.shop.level >= gd.maxShopLevel) return;
     if (!ioletaCanLevel(ps)) return; // free upgrades obey the same deployed-elite gate
@@ -1508,17 +1674,31 @@ function fundsReserve(m, ps) {
   return Number.isFinite(cap) && cap > 0 ? cap : 5;
 }
 
+/** [ASSUMED] Experiment-only proxy for safely delaying an optional merge; no future-wave oracle. */
+export function deferExperimentalMerge(m, ps, purchasePrice = 0) {
+  if (!experimentalEnabled(m, ps) || ps.shop.level >= 4 || ps.lp <= 10 || ps.deployCount < ps.deployCap) return false;
+  if (!experimentalCanLevel(m, ps) || ps.funds < Math.max(0, ps.shop.upgradePrice) + purchasePrice) return false;
+  const previous = m.lastResults.get(ps.playerId);
+  return !!previous && !(previous.leaked || []).some(l => l.counted !== false);
+}
+
 /** Buying / rerolling toward the lineup; a step generator (yields after each purchase or reroll). */
 function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
   const gd = ps?.gd || m.gd;
   let refreshes = 0;
   const minPrice = 2;
   const reserve = fundsReserve(m, ps);
+  const experimental = experimentalEnabled(m, ps);
   // the best lineup is reused while the owned chess stay the same (a refresh changes only the shop)
   let memo = null;
   for (let guard = 0; guard < 40; guard++) {
     if (guard > 0) yield;
     if (isIoleta(ps)) takeOffers(m, ps); // a merge reward can enable another merge before upgrading
+    if (experimental && !fillOnly && experimentalCanLevel(m, ps)) {
+      const oldLevel = ps.shop.level;
+      levelUp(m, ps);
+      if (ps.shop.level !== oldLevel) { memo = null; continue; }
+    }
     const ctx = context(m, ps);
     const ownedN = ps.allChess().length;
     const ownKey = `${ps.allChess().map((p) => `${p.uid}:${p.id}:${(p.items || []).length}`).join()}|${ctx.focus}|${ctx.second}`;
@@ -1531,7 +1711,7 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
     // freed: in 20 solo 绝境 昆图斯 matches the shed sold 44 of 222 before the placement step could deploy them). The
     // shed is pre-emptive (one slot is still free), so with only fresh singles it waits for the next prep.
     const used = ps.hand.filter(Boolean).length;
-    if (used >= gd.benchSize - 1) sellWeakestHand(m, ps, { keepFresh: true });
+    if (used >= gd.benchSize - 1 && (!botRefinement(m, 'capacity') || ownedN > ps.deployCap)) sellWeakestHand(m, ps, { keepFresh: true });
     // a full hand refuses every purchase, the third copy of a held pair too (PlayerState.buy, PRTS 卫戍协议/帮助 §手牌区):
     // an affordable one sheds the weakest hand single first (like the shed above, never one of this prep)
     if (freeSlot(ps.hand) < 0 && ps.shop.slots.some((s) => s && !s.sold && s.kind === 'chess' && ps.priceOf(s) <= ps.funds && ps.completesChessMerge(s.id))) {
@@ -1539,6 +1719,7 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
     }
     let best = -1;
     let bestS = 0;
+    let bestPrice = Infinity;
     let bestMerges = false;
     let cur = null;
     ps.shop.slots.forEach((s, i) => {
@@ -1550,6 +1731,18 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
         const merges = ps.completesChessMerge(s.id);
         if (freeSlot(ps.hand) < 0 || (mergesOnly && !merges)) return;
         const base = gd.baseIdOf(s.id);
+        const core = experimental && experimentalCore(m, ps, s.id);
+        if (experimental) {
+          if (fillOnly && !merges && experimentalCanLevel(m, ps)) return;
+          const target = experimentalTarget(m, ps, s.id);
+          const hasElite = ps.allChess().some(p => gd.baseIdOf(p.id) === base && gd.isGolden(p.id));
+          if (!gd.isGolden(s.id) && (hasElite || (target?.copies === 1 && ctx.owned.bases.has(base)))) return;
+          // [ASSUMED] Delay a healthy optional merge only for a concrete, affordable upgrade.
+          // A planned upgrade is performed above before the third copy is purchased.
+          if (merges && !core && deferExperimentalMerge(m, ps, price)) return;
+          if (fillOnly && !core && experimentalCanLevel(m, ps)
+            && (!merges || ps.funds >= Math.max(0, ps.shop.upgradePrice) + price)) return;
+        }
         if (boardFull && !merges && ps.funds - price < reserve) return; // banked (坎诺特)
         sc = buyScore(m, ps, s.id, ctx) - price;
         if (boardFull && !merges) {
@@ -1560,7 +1753,7 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
               cur = memo.cur;
             }
             const gain = lineupGain(m, ps, s.id, ctx, cur);
-            if (gain <= 2) return;
+            if (gain <= 2 && !core) return;
             sc += Math.min(15, gain * 0.5);
           } else if (gd.isGolden(s.id) || (!ctx.keep.has(base) && !(ctx.pairs < MAX_PAIRS && (chessRec(m, s.id, ps)?.tier ?? 6) <= 3 && countFree(ps.hand) >= 3))) {
             // a second copy of a non-keeper with no bench room for another pair is clutter, sold later at a loss
@@ -1570,6 +1763,7 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
         if (!boardFull) sc += 8;
       } else {
         if (fillOnly) return;
+        if (experimental && (experimentalCanLevel(m, ps) || (experimentalSearchTargets(m, ps).length && ps.funds > 1))) return;
         if (!canUseItem(m, ps, { id: s.id })) return;
         if (freeSlot(ps.hand) < 0) return;
         if (ps.funds - price < reserve && !ps.completesItemMerge(s.id)) return;
@@ -1577,9 +1771,13 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
         if (!carriers) return;
         sc = 6 + (gd.tierOf(s.id) || 1) * 3 - price + (ps.completesItemMerge(s.id) ? 10 : 0);
       }
-      const merges = s.kind === 'chess' && ps.completesChessMerge(s.id);
+      const merges = s.kind === 'chess' && ps.completesChessMerge(s.id)
+        && (!experimental || experimentalCore(m, ps, s.id));
       const mergeFirst = isIoleta(ps) && merges !== bestMerges;
-      if (mergeFirst ? merges : sc > bestS) { bestS = sc; best = i; bestMerges = merges; }
+      const betterScore = botRefinement(m, 'cheap')
+        ? sc > bestS + 1e-9 || (best >= 0 && Math.abs(sc - bestS) <= 1e-9 && price < bestPrice)
+        : sc > bestS;
+      if (mergeFirst ? merges : betterScore) { bestS = sc; best = i; bestMerges = merges; bestPrice = price; }
     });
     // leftover funds are lost at prep end: reroll while a purchase stays affordable (a band that keeps them: down to its
     // reserve — a free refresh is always taken)
@@ -1634,12 +1832,28 @@ export function* arrangeSteps(m, ps, { final = false, defer = false } = {}) {
   } else {
     plans.push(yield* planLayoutSteps(m, ps, chosen));
   }
+  // Only the final ordinary-round placement uses the demonstrations. Preserve every old
+  // rehearsal candidate within the configured budget, plus one taught candidate (ties favour it).
+  const taught = final && m.botFormationEnabled !== false && formationProfile(m);
+  if (final && !taught && plans.length > 1 && (botRefinement(m, 'guards') || botRefinement(m, 'medics'))) {
+    const repaired = repairLayout(m, ps, chosen, plans[0]);
+    if (distinctPlans([...plans, repaired]).length > distinctPlans(plans).length) plans[plans.length - 1] = repaired;
+  }
+  const combined = taught && resolveFormationMode(m) === 'combined';
+  if (combined) {
+    if (m.botRehearsal > 0) plans.splice(m.botRehearsal);
+    // Retain old candidates on rehearsal ties. Extra candidates cost at most three rehearsals.
+    for (const mode of ['learned', 'contact', 'refined']) {
+      plans.push(yield* planLayoutSteps(m, ps, chosen, LAYOUT_PARAMS, { formation: true, formationMode: mode }));
+    }
+  } else if (taught) plans.unshift(yield* planLayoutSteps(m, ps, chosen, LAYOUT_PARAMS, { formation: true }));
+  const rehearsalLimit = m.botRehearsal + (taught ? (combined ? 3 : 1) : 0);
   if (defer && plans.length > 1) {
-    const job = yield* createRehearsalSteps(m, ps, chosen, plans);
+    const job = yield* createRehearsalSteps(m, ps, chosen, plans, rehearsalLimit);
     yield* applyPlanSteps(m, ps, chosen, plans[0]);
     return job;
   }
-  yield* applyPlanSteps(m, ps, chosen, plans.length > 1 ? rehearse(m, ps, chosen, plans) : plans[0]);
+  yield* applyPlanSteps(m, ps, chosen, plans.length > 1 ? rehearse(m, ps, chosen, plans, rehearsalLimit) : plans[0]);
   return null;
 }
 

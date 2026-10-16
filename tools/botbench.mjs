@@ -14,6 +14,8 @@
 //               parallel load — measure decision time with --jobs 1)
 //   --band ID   solo configs only: the bot plays strategy ID (e.g. band_cannot) instead of its weighted pick — a band's
 //               mechanic in isolation (坎诺特 banking, 杜宾's 教鞭, 昆图斯's 突变细胞)
+//   --ioleta-policy legacy|experimental   independent Ioleta economy/purchase policy (default legacy)
+//   --formation legacy|learned|ordered|contact|refined|combined|optimized (default learned)
 //
 // Per match: victory, rounds passed, LP left (the alive players at the end; a won Final Assault: the team LP), and per
 // bot and round: LP, shop level, deployed units, active bonds and Σ bond tiers, activated layers, board value (Σ shop
@@ -28,12 +30,17 @@
 // back to back with --jobs 1.
 
 import { performance } from 'node:perf_hooks';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
+import { createHash } from 'node:crypto';
 import { Match } from '../server/match/Match.js';
 import * as bot from '../server/match/bot.js';
+import { BOT_REFINEMENTS, defaultBotRefinements } from '../server/match/botRefinements.js';
+import { FORMATION_MODES } from '../server/match/botFormation.js';
+import { FORMATION_PROFILES } from '../server/match/botFormationProfiles.js';
 import { VirtualScheduler } from '../server/match/scheduler.js';
 import { getData } from '../server/data.js';
+import { BENCHMARK_SCHEMA, leakMetrics, summarizeRecords, summarizeWindows } from './botbench/metrics.mjs';
 
 const argv = isMainThread ? process.argv.slice(2) : workerData.argv;
 const opt = {};
@@ -67,6 +74,18 @@ const configs = String(opt.configs || 'solo:FUNNY,solo:HARD,coop4:FUNNY,coop4:HA
 const seeds = Math.max(1, Number(opt.seeds) || 10);
 const seed0 = Number(opt.seed) || 1;
 const rehearsal = opt.rehearsal != null && opt.rehearsal !== true ? Math.max(0, Math.floor(Number(opt.rehearsal) || 0)) : undefined;
+const ioletaPolicy = String(opt['ioleta-policy'] || 'legacy');
+const formation = String(opt.formation || 'learned');
+const refinements = opt.refinements == null
+  ? defaultBotRefinements({ botIoletaPolicy: ioletaPolicy, botFormationEnabled: formation !== 'legacy' })
+  : String(opt.refinements).split(',').filter(k => k !== 'none');
+if (refinements.some(k => !BOT_REFINEMENTS.includes(k))) throw new Error('--refinements: expected none or preview,capacity,guards,medics,cheap');
+if (!['legacy', 'experimental'].includes(ioletaPolicy)) throw new Error('--ioleta-policy must be legacy or experimental');
+if (!FORMATION_MODES.includes(formation)) throw new Error(`--formation must be ${FORMATION_MODES.join('|')}`);
+const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const sourceFingerprint = fingerprint(['server', 'shared', 'data'].flatMap(dir =>
+  readdirSync(new URL(`../${dir}/`, import.meta.url), { recursive: true }).filter(f => /\.(js|json)$/.test(f)).sort()
+    .map(file => [`${dir}/${file}`, readFileSync(new URL(`../${dir}/${file.replaceAll('\\', '/')}`, import.meta.url), 'utf8')])));
 
 function runOne(cfg, seed) {
   const sched = new VirtualScheduler();
@@ -79,21 +98,51 @@ function runOne(cfg, seed) {
     roomCode: 'BENCH', mode: cfg.mode, difficulty: cfg.difficulty, seats, seed, data, log, scheduler: sched, botRehearsal: rehearsal,
     send: () => true, broadcast: () => {}, onEnd: (s) => { summary = s; },
   });
+  m.botIoletaPolicy = ioletaPolicy;
+  m.botFormationEnabled = formation !== 'legacy';
+  m.botFormationMode = formation;
+  m.botRefinements = refinements;
   // --band: the only strategy on offer (botPickBand draws from gd.bandIds()) — also one built around a bond the mode
   // switches off, which botPickBand would otherwise skip for the default band (DESIGN §21.26)
   if (opt.band && cfg.mode === 'solo') { m.gd.bandIds = () => [String(opt.band)]; m.gd.bandBondIds = () => []; }
-  const rec = { config: cfg.name, seed, stageId: m.stageId, bossId: m.bossId, preps: [], picks: [], rounds: [], bounties: [] };
+  const rec = {
+    schema: BENCHMARK_SCHEMA, config: cfg.name, seed, stageId: m.stageId, bossId: m.bossId,
+    options: { ioletaPolicy, formation, refinements, rehearsal: rehearsal ?? 'default', band: cfg.mode === 'solo' ? opt.band || null : null },
+    sourceFingerprint, formationMapSupported: !!FORMATION_PROFILES[m.stageId],
+    setup: { mode: cfg.mode, difficulty: cfg.difficulty, players: cfg.players, hiddenBossId: m.hiddenBossId,
+      factions: [...m.factions], disabledBonds: [...m.disabledBonds], staticInactiveBonds: [...m.staticInactiveBonds],
+      bannedChess: [...m.bannedChess].sort() },
+    preps: [], picks: [], rounds: [], bounties: [],
+  };
+  rec.setupFingerprint = fingerprint({ ...rec.setup, stageId: rec.stageId, bossId: rec.bossId });
+  const spawned = new Map();
+  const observed = new WeakSet();
+  const observeBattle = (b, o) => {
+    if (!b || observed.has(b) || !['normal', 'boss', 'hidden'].includes(o?.kind) || String(o.fieldId).startsWith('r:') || typeof b.on !== 'function') return b;
+    observed.add(b);
+    b.on('enemySpawn', ({ enemy }) => {
+      if (!enemy || (!enemy.counted && !enemy.isBoss)) return;
+      const key = `${o.round}|${enemy.ownerId}`;
+      let counts = spawned.get(key);
+      if (!counts) { counts = {}; spawned.set(key, counts); }
+      counts[enemy.defId] = (counts[enemy.defId] || 0) + 1;
+    }, { owner: 'botbench' });
+    return b;
+  };
   // rehearsal stepping time (Battle.step of the rehearsal fields)
   let rehMs = 0;
   const newBattle = m.newBattle.bind(m);
-  m.newBattle = (o) => {
-    const b = newBattle(o);
+  m.newBattle = (o, options) => {
+    const b = observeBattle(newBattle(o, options), o);
     if (o && typeof o.fieldId === 'string' && o.fieldId.startsWith('r:') && typeof b.step === 'function') {
       const step = b.step.bind(b);
       b.step = () => { const t0 = performance.now(); try { return step(); } finally { rehMs += performance.now() - t0; } };
     }
     return b;
   };
+  // Default client-combat bot fields use _specBattle instead of newBattle.
+  const specBattle = m._specBattle.bind(m);
+  m._specBattle = (spec, opts) => observeBattle(specBattle(spec, opts), spec);
   // every scheduler callback timed; a callback during which a bot became ready in PREP was that bot's prep
   const later = m.later.bind(m);
   let calMs = 0; // the tool's own calibration work inside a callback (subtracted)
@@ -139,55 +188,80 @@ function runOne(cfg, seed) {
     const endPrep = ps.endPrep.bind(ps);
     ps.endPrep = () => { (lost[m.round] ||= {})[ps.playerId] = m.gd.leftoverKeptBands.includes(ps.bandId) ? 0 : ps.funds; return endPrep(); };
   }
-  let last = '';
+  const captured = new Set();
+  const captureRound = kind => {
+    const key = `${m.round}|${kind}`;
+    if (captured.has(key)) return;
+    captured.add(key);
+    const row = { round: m.round, kind, formationEligible: kind === 'normal' && m.round <= 13 && rec.formationMapSupported, players: {} };
+    for (const ps of m.order) {
+      const r = m.lastResults.get(ps.playerId);
+      // A dead player has no field in later rounds; never include it in the exposure denominator.
+      if (!r) continue;
+      let value = 0;
+      let elites = 0;
+      for (const p of ps.board.values()) {
+        if (p.kind !== 'chess') continue;
+        const golden = m.gd.isGolden(p.id);
+        if (golden) elites++;
+        value += m.gd.chessPrice(m.gd.baseIdOf(p.id)) * (golden ? m.gd.goldenCopies : 1);
+      }
+      const active = Object.values(ps.bonds).filter((b) => b.active);
+      const spawnedByEnemy = spawned.get(`${m.round}|${ps.playerId}`) || {};
+      row.players[ps.playerId] = {
+        lp: ps.lp, alive: ps.alive, level: ps.shop.level, units: ps.deployCount, bonds: active.length,
+        tiers: active.reduce((s, b) => s + (b.tier || 0), 0), layers: ps.activatedLayers(), value, elites,
+        items: [...ps.board.values()].reduce((s, p) => s + (p.kind === 'chess' ? (p.items || []).length : 0), 0),
+        lost: lost[m.round] ? lost[m.round][ps.playerId] ?? null : null,
+        killed: r.killed, total: r.total,
+        ...leakMetrics(r), spawnedByEnemy, spawnedEnemies: Object.values(spawnedByEnemy).reduce((s, n) => s + n, 0),
+      };
+    }
+    if (m.teamLp != null) row.teamLp = m.teamLp;
+    rec.rounds.push(row);
+  };
+  // Capture after settlement, including the round that eliminated the player. Boss completion can lead to the hidden
+  // round without ever entering SETTLE or RESULT; sampling phase transitions alone silently loses that boss field.
+  const settle = m.settle.bind(m);
+  m.settle = (...args) => { const result = settle(...args); captureRound('normal'); return result; };
+  const finishFinal = m._finishFinal.bind(m);
+  m._finishFinal = (hidden, resultOf) => { const result = finishFinal(hidden, resultOf); captureRound(hidden ? 'hidden' : 'boss'); return result; };
+  const startFinal = m.startFinalAssault.bind(m);
+  rec.reachedBoss = false;
+  rec.lpAtBoss = null;
+  m.startFinalAssault = hidden => {
+    if (!hidden) { rec.reachedBoss = true; rec.lpAtBoss = m.alivePlayers().reduce((s, p) => s + Math.max(0, p.lp), 0); }
+    return startFinal(hidden);
+  };
   const t0 = performance.now();
   m.start();
-  sched.runUntil(() => {
-    const key = `${m.phase}:${m.round}`;
-    if (key !== last) {
-      last = key;
-      if (m.phase === 'SETTLE' || (m.phase === 'RESULT' && (m.round === m.gd.bossRound || m.round === m.gd.hiddenRound))) {
-        const row = { round: m.round, players: {} };
-        for (const ps of m.order) {
-          const r = m.lastResults.get(ps.playerId);
-          let value = 0;
-          let elites = 0;
-          for (const p of ps.board.values()) {
-            if (p.kind !== 'chess') continue;
-            const golden = m.gd.isGolden(p.id);
-            if (golden) elites++;
-            value += m.gd.chessPrice(m.gd.baseIdOf(p.id)) * (golden ? m.gd.goldenCopies : 1);
-          }
-          const active = Object.values(ps.bonds).filter((b) => b.active);
-          const leaked = r ? (r.leaked || []).filter((l) => l.counted !== false) : [];
-          row.players[ps.playerId] = {
-            lp: ps.lp, alive: ps.alive, level: ps.shop.level, units: ps.deployCount, bonds: active.length,
-            tiers: active.reduce((s, b) => s + (b.tier || 0), 0), layers: ps.activatedLayers(), value, elites,
-            items: [...ps.board.values()].reduce((s, p) => s + (p.kind === 'chess' ? (p.items || []).length : 0), 0),
-            lost: lost[m.round] ? lost[m.round][ps.playerId] ?? null : null,
-            killed: r ? r.killed : null, total: r ? r.total : null,
-            leaks: leaked.length, bountyLeaks: leaked.filter((l) => l.tag === 'bounty').length,
-            bountyKeys: leaked.filter((l) => l.tag === 'bounty').map((l) => l.enemyKey),
-          };
-        }
-        if (m.teamLp != null) row.teamLp = m.teamLp;
-        rec.rounds.push(row);
-      }
-    }
-    return summary != null;
-  }, { maxSteps: 5e6 });
+  sched.runUntil(() => summary != null, { maxSteps: 5e6 });
   rec.ms = performance.now() - t0;
-  rec.errors = errors.length + m.errorCount;
+  if (!summary) errors.push(`match did not end (${m.phase} R${m.round})`);
+  rec.completed = summary != null;
+  rec.errors = errors.length + m.errorCount + sched.errors.length;
   // Keep diagnostics in the JSON so a nonzero benchmark count is actionable.
   if (errors.length) rec.errorMessages = errors;
   if (m.errors.length) rec.matchErrors = m.errors;
+  if (sched.errors.length) rec.schedulerErrors = sched.errors.map(String);
   rec.victory = !!(summary && summary.victory);
   rec.roundsPassed = summary ? summary.roundsPassed : 0;
   rec.hidden = !!(summary && summary.hiddenReached);
   rec.bossRound = m.gd.bossRound;
   const alive = m.order.filter((p) => p.alive);
+  rec.finalLp = m.teamLp != null ? Math.max(0, m.teamLp) : alive.reduce((s, p) => s + Math.max(0, p.lp), 0);
+  // Kept for old JSON consumers: on a lost boss this legacy score uses pre-boss player LP, not final team LP.
   rec.lpLeft = rec.victory && m.teamLp != null ? m.teamLp : alive.reduce((s, p) => s + Math.max(0, p.lpAtFinal ?? p.lp), 0);
-  rec.players = (summary && summary.players ? summary.players : []).map((p) => ({ pid: p.playerId, band: p.bandId, rounds: p.roundsPassed, merges: p.stats.merges, spent: p.stats.gold }));
+  rec.metrics = { all: summarizeRecords([rec]), normal: summarizeRecords([rec], { normalOnly: true, maxRound: 13 }), windows: summarizeWindows([rec]) };
+  rec.players = (summary && summary.players ? summary.players : []).map((p) => ({ pid: p.playerId, band: p.bandId, rounds: p.roundsPassed, merges: p.stats.merges, spent: p.stats.gold, settledLeaks: p.stats.leaks }));
+  const sampledNormalLeaks = rec.rounds.filter(row => row.kind === 'normal').reduce((s, row) => s + Object.values(row.players).reduce((t, p) => t + p.leaks, 0), 0);
+  const settledNormalLeaks = m.order.reduce((s, p) => s + p.stats.leaks, 0);
+  rec.normalLeakAudit = { sampled: sampledNormalLeaks, settled: settledNormalLeaks, consistent: sampledNormalLeaks === settledNormalLeaks };
+  if (!rec.normalLeakAudit.consistent) {
+    rec.errors++;
+    (rec.errorMessages ||= []).push(`normal leakage audit failed: sampled ${sampledNormalLeaks}, settled ${settledNormalLeaks}`);
+    rec.metrics.all.errors = rec.metrics.normal.errors = rec.errors;
+  }
   m.dispose();
   return rec;
 }
@@ -208,7 +282,7 @@ if (!isMainThread) {
       const w = new Worker(new URL(import.meta.url), { workerData: { argv, indexes } });
       w.on('message', ({ i, rec }) => { all[i] = rec; note(rec); });
       w.on('error', reject);
-      w.on('exit', resolve);
+      w.on('exit', code => code === 0 ? resolve() : reject(new Error(`benchmark worker exited ${code}`)));
     })));
   }
   if (opt.json) writeFileSync(opt.json, JSON.stringify(all));
@@ -231,7 +305,7 @@ function stats(records) {
     rounds: avg(records.map((r) => r.roundsPassed)),
     lpLeft: avg(records.map((r) => r.lpLeft)),
     // alive when the Final Assault began: rounds passed ≥ boss round − 1 (results.js: a lost Final Assault = bossRound − 1)
-    reachedBoss: records.filter((r) => r.roundsPassed >= r.bossRound - 1).length,
+    reachedBoss: records.filter((r) => r.reachedBoss ?? r.roundsPassed >= r.bossRound - 1).length,
     hidden: records.filter((r) => r.hidden).length,
     lost: avg(lostPerPrep),
     merges: avg(merges),
@@ -264,7 +338,25 @@ function compare(runs, names) {
   const f1 = (x) => x.toFixed(1);
   const f2 = (x) => x.toFixed(2);
   const four = (a, f = f1) => a.map(f).join(' / ');
-  console.log('\n| config | run | matches | wins | rounds passed | LP left | reached boss | leaks/match | bounties (leaked) | funds lost/prep | merges/bot | errors |');
+  for (const c of cfgs) runs.forEach((rs, i) => {
+    const records = rs.filter(r => r.config === c && r.schema === BENCHMARK_SCHEMA);
+    if (!records.length) return;
+    const w = summarizeWindows(records);
+    console.log(`${c} ${names[i]} counted leaks / player-rounds: ` + Object.entries(w)
+      .map(([key, s]) => `${key}=${s.leaks}/${s.playerRounds}`).join(', '));
+  });
+  if (runs.some(rs => rs.some(r => r.schema === BENCHMARK_SCHEMA))) {
+    console.log('\nNormal rounds 1–13 (counted leaks include bounties; enemy denominator = actual counted spawns, including runtime summons/splits).');
+    console.log('| config | run | leaks | ordinary | bounty | enemies | player rounds | leaks/enemy | leaks/player round |');
+    console.log('|---|---|---|---|---|---|---|---|---|');
+    for (const c of cfgs) runs.forEach((rs, i) => {
+      const records = rs.filter(r => r.config === c && r.schema === BENCHMARK_SCHEMA);
+      if (!records.length) return;
+      const s = summarizeRecords(records, { normalOnly: true, maxRound: 13 });
+      console.log(`| ${c} | ${names[i]} | ${s.leaks} | ${s.ordinaryLeaks} | ${s.bountyLeaks} | ${s.enemies} | ${s.playerRounds} | ${(100 * (s.leaksPerEnemy || 0)).toFixed(2)} % | ${(s.leaksPerPlayerRound || 0).toFixed(2)} |`);
+    });
+  }
+  console.log('\n| config | run | matches | wins | rounds passed | legacy LP score | reached boss | leaks/match | bounties (leaked) | funds lost/prep | merges/bot | errors |');
   console.log('|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const c of cfgs) runs.forEach((rs, i) => {
     const s = stats(rs.filter((r) => r.config === c));

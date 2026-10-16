@@ -14,7 +14,8 @@ server/sim/
                    isolation), spawns, deploy, blocking, status (buffs, statuses), combat, queries (+ ranges), summons,
                    tiles (relocation, bodies, tactical points), displacement, economy (DP, layers, coins), events
   constants.js     TICK, MOVE_SCALE, ATTACK_PAUSE, element numbers, tuning knobs
-  rng.js           mulberry32 PRNG (+ int/range/chance/pick/shuffle/weighted)
+  rng.js           mulberry32 PRNG (+ int/range/chance/pick/shuffle/weighted; clone() copies the exact stream position,
+                   including state zero, without advancing the original; used by isolated AI previews)
   detmath.js       hypot / powi / sin / cos / atan2 with the same bits on every engine — the sim never calls the
                    implementation-approximated Math functions (hypot, sin, cos, atan2, pow, ** …; lint + test enforce it)
   grid.js          stage grid, tile semantics, 8-dir A* (no corner cutting), obstacles

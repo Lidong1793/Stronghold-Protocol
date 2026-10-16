@@ -114,14 +114,31 @@ test('Ioleta: duplicate elites count for upgrade gates but not as three distinct
   assert.equal(eliteCount(ps.gd, [...ps.board.values()]), 3);
 });
 
-test('Ioleta: all three bonds get independent small preferences before any is completed', (t) => {
+test('Ioleta: retain completed 坚守 and 精准 against an extra elite at the deployment cap', (t) => {
+  const { m, ps } = setup(t);
+  ps.deployCapBonus = 6 - ps.gd.deployCap;
+  roster(m, ps, [...STEAD, ...PRECI], true);
+  arrange(m, ps);
+  assert.equal(ps.bonds.steadShip.count, 3);
+  assert.equal(ps.bonds.preciShip.count, 3);
+  roster(m, ps, OTHER, true);
+  arrange(m, ps);
+  assert.equal(eliteCount(ps.gd, [...ps.board.values()]), 6);
+  assert.equal(ps.bonds.steadShip.count, 3);
+  assert.equal(ps.bonds.preciShip.count, 3);
+  checkInvariants(m);
+});
+
+test('Ioleta: all three bonds get independent meaningful preferences before any is completed', (t) => {
   const { ps } = setup(t);
   const owned = { counts: new Map() };
   const bonus = (id) => ioletaBuyBondBonus(ps.gd, { bonds: [id] }, owned);
   assert.ok(bonus('steadShip') > bonus('preciShip'));
   assert.ok(bonus('preciShip') > bonus('arcaneShip'));
   assert.ok(bonus('arcaneShip') > 0, '奥术 is preferred even with no 坚守 or 精准');
-  assert.ok(bonus('steadShip') < 1, 'a close-choice preference, not a build target');
+  assert.ok(bonus('steadShip') >= 10, 'meaningful progress value');
+  owned.counts.set('preciShip', 2);
+  assert.equal(bonus('preciShip'), 30, 'third distinct member earns completion value');
   const arcane = bonus('arcaneShip');
   owned.counts.set('steadShip', 3);
   assert.equal(bonus('steadShip'), 0, 'a fourth member has ordinary value');

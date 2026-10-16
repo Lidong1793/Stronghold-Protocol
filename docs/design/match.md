@@ -89,6 +89,30 @@ Per match: pick stage (weighted among the mode's `config.modes[m].stages`, weigh
 
 ### 6.6 AI players (bot.js)
 
+Upstream AI refinements (2026-10-16): the explicit experimental Ioleta + original formation combination
+(`m.botIoletaPolicy = 'experimental'`, `m.botFormationEnabled = false`) defaults to `preview,capacity`.
+`m.botRefinements = []` restores its previous decisions; the global default policy/formation is unchanged.
+Preview rehearsals share `_normalOpts` with actual normal combat: normal field seed, start handlers, enemy replacements
+and in-battle layers; copied boards and a restricted context isolate state and RNG. Broken previews are discarded.
+Capacity scoring counts withdrawn bond members only if the hand can retain them, subtracts the incoming purchase's
+slot, and does not pre-emptively sell an operator needed to fill deployment merely to reserve a hand slot.
+Optional `guards`/`medics` replace at most the last normal rehearsal variant with a deterministic repair of the first;
+they retain the original first candidate and candidate budget, never modify Boss/hidden planning, and require supported
+incoming contacts (medics also retain healing coverage). Optional `cheap` breaks purchase-score ties by price after
+the existing merge priorities. These [ASSUMED] AI choices come from upstream c24e17ee (#452/#577/#315) and local
+adaptations; all three optional switches remain off. Evaluation prioritizes normal R1–10/R1–11, separates R11–13/R12–13,
+and pairs common player-round exposure. See [refinement evidence](../research/ai-refinements.md).
+
+Local owner layout demonstrations (2026-10-16): ordinary R1–13 on the seven demonstrated Dire maps gain one
+formation candidate (`botFormation.js`, `botFormationProfiles.js`). Five confirmed examples per map supply soft
+role/tile frequencies; the sixth is held out. The candidate favours healing coverage, crossfire on blocking points
+and one close-range defence per ground route, treating dead-zone defenders as rear support. Current ranges, deploy
+legality, airflow and high-ground preferences remain authoritative. The final prep rehearses this candidate plus the
+original budget of candidates (default up to four total), preferring the demonstration on a tie; with rehearsal off
+it uses the taught candidate. Extra planning draws no RNG. Intermediate arrangements and summons retain the existing
+planner. Boss / Hidden Core rounds and unknown maps retain their original layout path and RNG behaviour. These are
+[ASSUMED] owner-taught AI preferences, not battle rules; evidence and A/B results: [layout learning](../research/layout-learning.md).
+
 Local owner rule (2026-10-15): opening strategy choices made by AI seats or AI 托管 exclude 歌利亚
 (`band_sarkazb`) and 杜宾 (`band_doberm`). Whenever 伊奥莱塔·罗素 (`band_ioleta`) is offered by the mode and
 not already picked by a teammate, the AI always takes it. Otherwise the existing LP weighting, inactive-bond
@@ -99,14 +123,25 @@ timeout highlights retain their existing rules. This is a requested local AI pre
 Pending Pointing Stick offers use the existing bounty scorer at bot prep entry, immediately after a successful cast,
 and before Ready. The prep's deadline — and the scheduler's fallback when a step of a bot's prep fails — randomly resolves any remaining offer before temp and Ready; a seat that left is eliminated and its offer dropped.
 
+Accepted replacement policy (2026-10-16, opt-in experiment only): [Ioleta strategy rules](../IOLETA-POLICY.md).
+Prefer three 助力 / three 坚守 / two 精准; two 助力 / three 坚守 / three 精准 is the secondary framework.
+奥术 and 迅捷 gain fallback priority when core bonds are disabled. The linked rules define staged core purchases,
+upgrade exits, deferred non-core merges and whole-lineup replacement value. The paragraph below describes the
+default runtime only, not the replacement target. `m.botIoletaPolicy = 'experimental'` selects the documented
+experimental parameters; `m.botFormationEnabled = false` independently disables the taught layout candidate.
+Formation versions are v0.1 for the original layout (`legacy`, false) and v0.2 for the taught layout
+(`learned`, true/default), independent of policy and application release versions.
+The [240-match factorial comparison](../research/ioleta-factorial.md) records the results and leakage accounting;
+the experiment does not replace the default AI.
+
 Local owner Ioleta policy (2026-10-15): `band_ioleta` AI (including AI 托管) may upgrade L1 → L2 only with
 at least three deployed elites, and L2 → L3 only with six; free upgrades obey the same gates. From L3 the ordinary
 economy curve applies. Eligibility does not force an upgrade. Affordable shop merges and their reward chains precede
 upgrades; newly acquired elites are arranged before checking the gate, so bench-only elites never unlock it.
 The lineup strongly prefers keeping elites (duplicates count for 统御号令), and values its shared per-elite stat
-gain. 坚守 / 精准 / 奥术 receive small independent preferences in close shop, reward and lineup choices, skipping
-disabled bonds and capping special value at three distinct members. There is no sequential bond target, completion
-bonus or extra refresh incentive; useful stock is not rejected to hunt these bonds. Elite retention and immediate
+gain. 坚守 / 精准 / 奥术 receive independent member bonuses (12 / 10 / 8) in shop, reward and lineup choices, skipping
+disabled bonds and capping special value at three distinct members. Completing three adds twice the member bonus; the third shop member earns the same marginal bonus. There is no sequential bond target
+or extra refresh incentive; useful stock is not rejected to hunt these bonds. Elite retention and immediate
 merges take priority. Numerical
 heuristic weights are [ASSUMED] (not gameplay rules), isolated in `server/match/botIoleta.js`; normal game legality,
 human manual actions and other strategies' upgrade policies are unchanged. Regression: `test/match/bot-ioleta.test.js`.
@@ -176,3 +211,26 @@ may exceed capacity; `requirePool:false` bypasses equipment limits only for thes
 operator shop and reward offers remain valid after exhaustion and record the deficit. Future rolls exclude empty
 stock; selling repays the deficit first. Item shop/reward claims and 整备 remain stock-limited. Rockrock and Flametail
 use the measured weighted subsets described in DATA and §30.2.
+
+
+Local AI feedback (2026-10-15): the owner chose stronger independent three-member bond goals while retaining elite priority. Ioleta member weights are 12 / 10 / 8 for 坚守 / 精准 / 奥术, with twice that value added on completion; disabled bonds and fourth members add no special value. Shop rewards score the same marginal completion benefit. The layout model excludes a road blocker's own ground damage after its blocking tile on each route, favouring approach coverage (usually RIGHT); flyers, healing and other units' coverage remain independent. These are [ASSUMED] AI heuristics, not changes to official battle rules. Source: owner playtest and requested policy, 2026-10-15. Regression tests: bot.test.js and bot-ioleta.test.js. Bot-match golden results are intentionally regenerated; battle-only fixtures should stay unchanged.
+
+
+Local formation experiments (2026-10-16): opt-in `m.botFormationMode` values `ordered`, `contact`, `refined`
+and `combined` extend the owner v0.2 profile in ordinary R1–13 on demonstrated maps only. `ordered` places
+blockers, damage dealers, then healers. `contact` additionally rewards another damage dealer covering both
+the blocker and the preceding tile on every incoming ground route, and favours blocking medics off-road.
+`refined` revisits legal tiles/directions of the complete formation for at most two deterministic improvement
+passes; existing self-range road blockers stay on-road. These are [ASSUMED] local heuristics derived from
+owner examples and upstream 0.3.0 commit c24e17eec3af1e6dedfa9935a6d15245cf2f4586, not official rules.
+`combined` retains the original candidates first and appends learned/contact/refined candidates (default
+at most six rehearsals, versus four for v0.2); ties retain the earlier candidate. Without rehearsals it keeps
+the original candidate. No extra RNG is consumed; intermediate buying, summons, Boss/hidden and unknown-map
+fallbacks are unchanged. Existing defaults remain unchanged. The comparison runner fixes experimental Ioleta
+plus explicit preview/capacity and only accepts HARD/ABYSS. Evidence: [formation experiments](../research/formation-optimization.md).
+
+The opt-in `optimized` formation preset selects `contact` on HARD and `combined` on ABYSS; other difficulties
+retain v0.2 and were not benchmarked. This selection was made after seeds 31–50, then frozen and confirmed on
+seeds 51–70. Keep explicit experimental Ioleta + preview/capacity when reproducing these results. Global defaults
+remain unchanged; the final confirmation includes an ABYSS R1–10 tradeoff versus v0.2 (27 vs 25 leaks), alongside
+R1–11 improvement (53 vs 70) and more Boss arrivals (20 vs 18 out of 20). Full evidence is in the linked report.

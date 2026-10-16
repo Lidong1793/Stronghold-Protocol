@@ -1,5 +1,19 @@
 # META.md — match & meta engine (server/match)
 
+AI refinements (2026-10-16): `botRefinements.js` defaults to `preview,capacity` only with explicit experimental Ioleta
+and original formation switches. `m.botRefinements = []` is the old baseline; other switches are opt-in. Preview mode
+uses `_normalOpts(ps, { preview: true, board })`, `previewPlayer` and an isolated EffectDispatcher. The candidate owns
+its board/hand/temp and read snapshots; mutation capabilities are no-ops, event edits affect only its battle input,
+and `rng.clone()` preserves the current stream position without advancing the match. Construction/handler failures
+discard the estimate. This previews battle start from the current prep state, not future purchases or unexecuted
+prep-end actions. Capacity and optional support/price policies are specified in DESIGN §6.6; results and early/late
+leak accounting: [AI refinements](research/ai-refinements.md).
+
+Local normal-round AI layout teaching (2026-10-16): `botFormation.js` adds a role/terrain and healing/crossfire
+candidate only in ordinary rounds 1–13 on the demonstrated maps. Final prep rehearses one additional candidate
+(default up to four total); Boss / Hidden Core positioning and RNG remain unchanged. These [ASSUMED] preferences
+come from 42 owner-confirmed examples; see [evidence, reproduction and comparison](research/layout-learning.md).
+
 Audience: **content authors** writing prep-side ("SERVER_*") effects in `server/sim/content/*.js → registerMeta(registry)`,
 the **UI owner** consuming `m.public` / `m.private` / `m.result`, and anyone driving matches in tests or tools.
 Normative contracts stay in DESIGN.md §6 and §8 ([design/match.md](design/match.md),
@@ -239,14 +253,29 @@ The rest of this section is the legacy server-run mode
 另一组队友的战场情况" → `BAD_TARGET 'other group hidden'`); eliminated / departed players spectate any field.
 
 ### 1.5 AI player (bot.js)
+For owner-authored positioning demonstrations, `npm run layout:lab` opens a separate local editor: seven Dire
+maps × six eight-piece blocker/damage/healer distributions with real default-loadout ranges. Drafts and confirmed
+layouts are stored in `local/layout-training/`; only confirmed layouts export geometric learning features. This tool
+does not change the planner. Workflow and limits: [layout-lab/README.md](../tools/layout-lab/README.md).
+
+**Accepted Ioleta target (2026-10-16, opt-in experiment):** [strategy rules](IOLETA-POLICY.md).
+Three 助力 / three 坚守 / two 精准 is preferred; two 助力 / three 坚守 / three 精准 is secondary.
+奥术 / 迅捷 are stronger alternatives in disabled-core-bond matches; 迅捷 has a two-member activation and a
+40-layer enhancement, not a three-member threshold. Staged core purchases and upgrades, deferred non-core merges
+and whole-lineup replacement decisions are specified there. `m.botIoletaPolicy = 'experimental'` enables the test
+implementation and its explicitly assumed unresolved parameters. `m.botFormationEnabled = false` independently
+selects the old layout planner. The following specialization remains the default runtime.
+Formation naming: v0.1 = original / `legacy`; v0.2 = taught / `learned`. These names do not version the policy or app.
+See the [four-group benchmark](research/ioleta-factorial.md) for seeded leakage, survival and win comparisons.
+
 **Ioleta specialization** (owner policy, 2026-10-15; DESIGN §6.6): `botIoleta.js` gates L1 → L2 on three
 deployed elites and L2 → L3 on six, including free upgrades; L3+ uses the generic curve. The prep arranges newly
 merged elites before each upgrade pass. Affordable immediate merges and their queued reward chains go first.
 Elite retention adds 120 value per elite, plus a lineup estimate of 统御号令's shared gain. Independent bond
-preferences use small weights 0.3 / 0.2 / 0.1 for 坚守 / 精准 / 奥术, capped at three distinct members; disabled
-bonds add nothing. Shop/reward choices apply these bonuses to new members while fewer than three are owned,
-and add 24 for an immediate merge. [ASSUMED] These weights only favour otherwise comparable choices; there is no
-sequential target, completion bonus or targeted refresh incentive. A fourth member has ordinary value. Duplicated elites count for upgrade gates, distinct members for these bonds. AI 托管
+preferences use member weights 12 / 10 / 8 for 坚守 / 精准 / 奥术, capped at three distinct members; disabled
+bonds add nothing. Shop/reward choices apply these bonuses to new members while fewer than three are owned (the third earns three times the member weight),
+and add 24 for an immediate merge. [ASSUMED] Completing three adds twice the member weight to the lineup, so losing the third loses that bonus too. There is no
+sequential target or targeted refresh incentive. A fourth member has ordinary value. Duplicated elites count for upgrade gates, distinct members for these bonds. AI 托管
 shares this policy; it does not change manual upgrade legality or the band effect. Tests: `bot-ioleta.test.js`.
 
 **Strategy** (`botPickBand`): the local owner preference (§1.1) excludes 歌利亚 / 杜宾 and always takes an available
@@ -977,3 +1006,26 @@ Fixed equipment gifts from `SERVER_GAIN_EQUIP` (卡涅利安、蜜蜡、缪尔�
 including the same families awarded by 变形者. They still occupy ordinary/advanced 1/2 copies and can leave availability
 at zero after a removal. Ordinary shop, reward and random grants retain their limits. `requirePool:false` is not a
 universal equipment bypass. Rockrock/Flametail's measured weighted subsets remain subject to shared availability (§30.2).
+
+
+Local AI feedback (2026-10-15): the owner chose stronger independent three-member bond goals while retaining elite priority. Ioleta member weights are 12 / 10 / 8 for 坚守 / 精准 / 奥术, with twice that value added on completion; disabled bonds and fourth members add no special value. Shop rewards score the same marginal completion benefit. The layout model excludes a road blocker's own ground damage after its blocking tile on each route, favouring approach coverage (usually RIGHT); flyers, healing and other units' coverage remain independent. These are [ASSUMED] AI heuristics, not changes to official battle rules. Source: owner playtest and requested policy, 2026-10-15. Regression tests: bot.test.js and bot-ioleta.test.js. Bot-match golden results are intentionally regenerated; battle-only fixtures should stay unchanged.
+
+
+Local formation experiments (2026-10-16): opt-in `m.botFormationMode` values `ordered`, `contact`, `refined`
+and `combined` extend the owner v0.2 profile in ordinary R1–13 on demonstrated maps only. `ordered` places
+blockers, damage dealers, then healers. `contact` additionally rewards another damage dealer covering both
+the blocker and the preceding tile on every incoming ground route, and favours blocking medics off-road.
+`refined` revisits legal tiles/directions of the complete formation for at most two deterministic improvement
+passes; existing self-range road blockers stay on-road. These are [ASSUMED] local heuristics derived from
+owner examples and upstream 0.3.0 commit c24e17eec3af1e6dedfa9935a6d15245cf2f4586, not official rules.
+`combined` retains the original candidates first and appends learned/contact/refined candidates (default
+at most six rehearsals, versus four for v0.2); ties retain the earlier candidate. Without rehearsals it keeps
+the original candidate. No extra RNG is consumed; intermediate buying, summons, Boss/hidden and unknown-map
+fallbacks are unchanged. Existing defaults remain unchanged. The comparison runner fixes experimental Ioleta
+plus explicit preview/capacity and only accepts HARD/ABYSS. Evidence: [formation experiments](research/formation-optimization.md).
+
+The opt-in `optimized` formation preset selects `contact` on HARD and `combined` on ABYSS; other difficulties
+retain v0.2 and were not benchmarked. This selection was made after seeds 31–50, then frozen and confirmed on
+seeds 51–70. Keep explicit experimental Ioleta + preview/capacity when reproducing these results. Global defaults
+remain unchanged; the final confirmation includes an ABYSS R1–10 tradeoff versus v0.2 (27 vs 25 leaks), alongside
+R1–11 improvement (53 vs 70) and more Boss arrivals (20 vs 18 out of 20). Full evidence is in the linked report.
