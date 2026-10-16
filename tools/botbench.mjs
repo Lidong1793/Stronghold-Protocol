@@ -14,8 +14,17 @@
 //               parallel load — measure decision time with --jobs 1)
 //   --band ID   solo configs only: the bot plays strategy ID (e.g. band_cannot) instead of its weighted pick — a band's
 //               mechanic in isolation (坎诺特 banking, 杜宾's 教鞭, 昆图斯's 突变细胞)
+//   --exclude-band IDS   solo configs only: comma list of strategies never offered (e.g. band_ioleta: the bot's weighted
+//               pick among the others, botPickBand)
 //   --ioleta-policy legacy|experimental   independent Ioleta economy/purchase policy (default legacy)
-//   --formation legacy|learned|ordered|contact|refined|combined|optimized (default learned)
+//   --formation legacy|learned|ordered|contact|refined|combined|optimized|pool|adaptive|trio (default learned)
+//   --rehearsal-stage K / --rehearsal-caps C   ablations of the adaptive mode's limits (bot.js ADAPTIVE_STAGE /
+//               ADAPTIVE_CAPS; 0 = off)
+//   --trio A,B,…   the trio mode's candidate priority (bot.js TRIO_SOURCES)
+//   --no-unite  skip every 联防 phase (settle right after the battles; each seat's own field only — a speed-up for
+//               placement experiments, NOT the game's rule)
+//   --trace F   append one JSON line per server-side final rehearsal to F (m.botFormationTrace: candidate sources,
+//               rehearsal leaks / kills / ticks, the pick; decisions are unchanged)
 //
 // Per match: victory, rounds passed, LP left (the alive players at the end; a won Final Assault: the team LP), and per
 // bot and round: LP, shop level, deployed units, active bonds and Σ bond tiers, activated layers, board value (Σ shop
@@ -30,10 +39,11 @@
 // back to back with --jobs 1.
 
 import { performance } from 'node:perf_hooks';
-import { writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, readdirSync, appendFileSync } from 'node:fs';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
 import { Match } from '../server/match/Match.js';
+import { PHASE } from '../shared/constants.js';
 import * as bot from '../server/match/bot.js';
 import { BOT_REFINEMENTS, defaultBotRefinements } from '../server/match/botRefinements.js';
 import { FORMATION_MODES } from '../server/match/botFormation.js';
@@ -76,6 +86,11 @@ const seed0 = Number(opt.seed) || 1;
 const rehearsal = opt.rehearsal != null && opt.rehearsal !== true ? Math.max(0, Math.floor(Number(opt.rehearsal) || 0)) : undefined;
 const ioletaPolicy = String(opt['ioleta-policy'] || 'legacy');
 const formation = String(opt.formation || 'learned');
+const intOpt = (k) => (opt[k] != null && opt[k] !== true ? Math.max(0, Math.floor(Number(opt[k]) || 0)) : undefined);
+const rehearsalStage = intOpt('rehearsal-stage');
+const rehearsalCaps = intOpt('rehearsal-caps');
+const tracePath = typeof opt.trace === 'string' ? opt.trace : null;
+const trioSources = typeof opt.trio === 'string' ? opt.trio.split(',') : undefined;
 const refinements = opt.refinements == null
   ? defaultBotRefinements({ botIoletaPolicy: ioletaPolicy, botFormationEnabled: formation !== 'legacy' })
   : String(opt.refinements).split(',').filter(k => k !== 'none');
@@ -102,12 +117,23 @@ function runOne(cfg, seed) {
   m.botFormationEnabled = formation !== 'legacy';
   m.botFormationMode = formation;
   m.botRefinements = refinements;
+  if (rehearsalStage !== undefined) m.botRehearsalStage = rehearsalStage;
+  if (rehearsalCaps !== undefined) m.botRehearsalCaps = rehearsalCaps;
+  if (trioSources) m.botTrioSources = trioSources;
+  if (opt['no-unite']) m._afterCombat = function () { if (this.phase === PHASE.COMBAT) this.settle(null, null); };
+  if (tracePath) m.botFormationTrace = (o) => appendFileSync(tracePath, JSON.stringify({ config: cfg.name, seed, ...o }) + '\n');
   // --band: the only strategy on offer (botPickBand draws from gd.bandIds()) — also one built around a bond the mode
   // switches off, which botPickBand would otherwise skip for the default band (DESIGN §21.26)
   if (opt.band && cfg.mode === 'solo') { m.gd.bandIds = () => [String(opt.band)]; m.gd.bandBondIds = () => []; }
+  if (opt['exclude-band'] && cfg.mode === 'solo') {
+    const out = new Set(String(opt['exclude-band']).split(','));
+    const ids = m.gd.bandIds.bind(m.gd);
+    m.gd.bandIds = () => ids().filter((id) => !out.has(id));
+  }
   const rec = {
     schema: BENCHMARK_SCHEMA, config: cfg.name, seed, stageId: m.stageId, bossId: m.bossId,
-    options: { ioletaPolicy, formation, refinements, rehearsal: rehearsal ?? 'default', band: cfg.mode === 'solo' ? opt.band || null : null },
+    options: { ioletaPolicy, formation, refinements, rehearsal: rehearsal ?? 'default', band: cfg.mode === 'solo' ? opt.band || null : null, ...(opt['exclude-band'] ? { excludeBand: String(opt['exclude-band']) } : {}),
+      ...(rehearsalStage !== undefined ? { rehearsalStage } : {}), ...(rehearsalCaps !== undefined ? { rehearsalCaps } : {}), ...(trioSources ? { trio: trioSources.join(',') } : {}), ...(opt['no-unite'] ? { noUnite: true } : {}) },
     sourceFingerprint, formationMapSupported: !!FORMATION_PROFILES[m.stageId],
     setup: { mode: cfg.mode, difficulty: cfg.difficulty, players: cfg.players, hiddenBossId: m.hiddenBossId,
       factions: [...m.factions], disabledBonds: [...m.disabledBonds], staticInactiveBonds: [...m.staticInactiveBonds],

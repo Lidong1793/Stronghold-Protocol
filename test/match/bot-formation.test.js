@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formationProfile, formationRole, formationValue, contactValue, resolveFormationMode } from '../../server/match/botFormation.js';
 import { FORMATION_PROFILES } from '../../server/match/botFormationProfiles.js';
-import { planLayout, arrange } from '../../server/match/bot.js';
+import { planLayout, arrange, ADAPTIVE_STAGE, ADAPTIVE_CAPS, TRIO_SOURCES } from '../../server/match/bot.js';
+import { rehearsalCap } from '../../server/sim/rehearsal.js';
 import { createRng } from '../../server/sim/rng.js';
 import { canPlace, placeClass } from '../../server/match/board.js';
 import { demonstrations, exampleSetup, evaluateExample } from '../../tools/layout-lab/evaluate.mjs';
@@ -172,8 +173,114 @@ for (const budget of [1, 3]) test(`combined rehearsal budget ${budget} retains l
 });
 
 test('optimized preset selects independently measured HARD/ABYSS modes and preserves other defaults', () => {
+  assert.equal(resolveFormationMode({ botFormationMode: 'adaptive', difficulty: 'HARD' }), 'adaptive');
+  assert.equal(resolveFormationMode({ botFormationMode: 'pool', difficulty: 'ABYSS' }), 'pool');
   assert.equal(resolveFormationMode({ botFormationMode: 'optimized', difficulty: 'HARD' }), 'contact');
   assert.equal(resolveFormationMode({ botFormationMode: 'optimized', difficulty: 'ABYSS' }), 'combined');
   assert.equal(resolveFormationMode({ botFormationMode: 'optimized', difficulty: 'NORMAL' }), 'learned');
   assert.equal(resolveFormationMode({}), 'learned');
 });
+
+/** A HARD solo prep on a taught map, `ids` in hand, ready for a final placement. */
+function poolSetup(t, ids, { stageId = 'act2autochess_m03', seed = 31 } = {}) {
+  const h = makeMatch({ mode: 'solo', difficulty: 'HARD', seed }).start().toPrep();
+  t.after(() => h.m.dispose());
+  h.setStage(stageId);
+  const { m } = h, ps = m.order[0];
+  for (const id of ids) give(m, ps, id, 'hand');
+  m.botRefinements = ['preview', 'capacity'];
+  return { h, m, ps };
+}
+const signature = plan => [...plan.entries()].sort((a, b) => a[0] - b[0]).map(([u, k]) => `${u}@${k}:${plan.dirOf(u)}`).join(' ');
+/** The final rehearsal job of one mode from the same RNG state, and the RNG value right after it. */
+function finalJob(m, ps, mode, budget = 3) {
+  m.botRehearsal = budget;
+  m.botFormationEnabled = mode !== 'legacy';
+  m.botFormationMode = mode;
+  m.rngBots = createRng(456);
+  const job = arrange(m, ps, { final: true, defer: true });
+  return { job, tail: m.rngBots() };
+}
+
+for (const ids of [['chess_char_1_02_a'], ['chess_char_1_02_a', 'chess_char_1_10_a', 'chess_char_2_08_a', 'chess_char_3_16_a']]) {
+  test(`pool / adaptive keep every distinct legacy candidate, the old default first, and the RNG (${ids.length} pieces)`, t => {
+    const { m, ps } = poolSetup(t, ids);
+    // every distinct legacy variant: the old planner with a budget that cuts none of them
+    const legacy = finalJob(m, ps, 'legacy', 5);
+    const legacyPlans = legacy.job ? legacy.job.plans : [];
+    for (const mode of ['pool', 'adaptive']) {
+      const { job, tail } = finalJob(m, ps, mode);
+      assert.equal(tail, legacy.tail, `${mode}: the same RNG draws as the old planner`);
+      assert.ok(job, `${mode}: a rehearsal job`);
+      const sigs = job.plans.map(signature);
+      assert.equal(new Set(sigs).size, sigs.length, `${mode}: no duplicate candidate takes a rehearsal`);
+      assert.equal(job.plans[0].source, 'legacy:0');
+      if (legacyPlans.length) assert.equal(sigs[0], signature(legacyPlans[0]), `${mode}: the old default plan stays first`);
+      if (mode === 'adaptive') {
+        for (const p of legacyPlans) assert.ok(sigs.includes(signature(p)), `adaptive keeps legacy candidate ${p.source}`);
+        assert.deepEqual(job.limits, { stage: ADAPTIVE_STAGE, tickBudget: ADAPTIVE_CAPS * rehearsalCap(m.wave.timeLimit) });
+      } else {
+        assert.ok(job.plans.length <= m.botRehearsal + 3);
+        assert.deepEqual(job.limits, { stage: 0, tickBudget: 0 });
+      }
+      job.run();
+      assert.ok(job.done && job.plans.includes(job.best));
+    }
+  });
+}
+
+test('pool / adaptive change nothing on an unseen map, a Boss round or a Hidden Core round', t => {
+  const ids = ['chess_char_1_02_a', 'chess_char_1_10_a', 'chess_char_2_08_a', 'chess_char_3_16_a'];
+  const { m, ps } = poolSetup(t, ids);
+  m.stageId = 'unseen-map'; // no profile: the legacy candidates only
+  const legacy = finalJob(m, ps, 'legacy');
+  for (const mode of ['pool', 'adaptive', 'trio']) {
+    const { job, tail } = finalJob(m, ps, mode);
+    assert.equal(tail, legacy.tail);
+    assert.deepEqual(job?.plans.map(signature), legacy.job?.plans.map(signature), `${mode} on an unseen map`);
+    assert.deepEqual(job?.limits, legacy.job?.limits);
+  }
+  for (const round of [14, 15]) {
+    const h = makeMatch({ mode: 'solo', difficulty: 'HARD', seed: 11 }).start().toPrep();
+    t.after(() => h.m.dispose());
+    const { m: bm } = h, bps = bm.order[0];
+    for (const id of ids) give(bm, bps, id, 'hand');
+    bm.startRound(round);
+    const boards = [];
+    for (const mode of ['legacy', 'pool', 'adaptive', 'trio']) {
+      bm.botFormationEnabled = mode !== 'legacy';
+      bm.botFormationMode = mode;
+      bm.rngBots = createRng(321);
+      arrange(bm, bps, { final: true });
+      boards.push(JSON.stringify([[...bps.board].map(([key, p]) => [key, p.uid, p.dir]), bm.rngBots()]));
+    }
+    assert.equal(boards[1], boards[0], `pool, round ${round}`);
+    assert.equal(boards[2], boards[0], `adaptive, round ${round}`);
+    assert.equal(boards[3], boards[0], `trio, round ${round}`);
+  }
+});
+
+for (const ids of [['chess_char_1_02_a'], ['chess_char_1_02_a', 'chess_char_1_10_a', 'chess_char_2_08_a', 'chess_char_3_16_a']]) {
+  test(`trio rehearses at most the default budget of distinct candidates, stops when one is leak-free, keeps the RNG (${ids.length} pieces)`, t => {
+    const { m, ps } = poolSetup(t, ids);
+    const legacy = finalJob(m, ps, 'legacy');
+    for (const budget of [1, 3]) {
+      const { job, tail } = finalJob(m, ps, 'trio', budget);
+      assert.equal(tail, legacy.tail, 'the same RNG draws as the default AI');
+      if (!job) { assert.equal(budget, 1, 'one candidate: nothing to compare'); continue; }
+      assert.ok(job.plans.length <= budget);
+      const sigs = job.plans.map(signature);
+      assert.equal(new Set(sigs).size, sigs.length);
+      assert.deepEqual(job.plans.map(p => p.source), TRIO_SOURCES.filter(src => job.plans.some(p => p.source === src)),
+        'candidates keep the priority order');
+      assert.deepEqual(job.limits, { stage: 1, tickBudget: 0 });
+      job.run();
+      assert.ok(job.done && job.plans.includes(job.best));
+    }
+    // an explicit priority list (tools) is honoured and never planned past the budget
+    m.botTrioSources = ['legacy:0', 'legacy:2'];
+    const { job } = finalJob(m, ps, 'trio');
+    if (job) assert.ok(job.plans.every(p => ['legacy:0', 'legacy:2'].includes(p.source)));
+    delete m.botTrioSources;
+  });
+}

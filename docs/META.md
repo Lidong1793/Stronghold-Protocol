@@ -372,7 +372,8 @@ another simulation. Actual battles and human seats under AI 托管 are unchanged
 spend a different budget. The server rehearses those rooms itself.
 
 The interface a later local or external compute can plug into — this version makes no external network call — is:
-the server offers one task (`b.rehearsal`: task id, the AI seat, the tick cap, the candidate specs); the executor
+the server offers one task (`b.rehearsal`: task id, the AI seat, the tick cap, the candidate specs and, for the
+experimental `adaptive` formation mode, the stage / tick budget limits of the run); the executor
 answers with the winning index or `error: true`; a timeout (`botRehearsalDelegateMs`, default 3 s), a missing host,
 a host change, a disconnect, an invalid index or an error makes the server run the same candidates; prep ending
 cancels the task and keeps the default layout. The deadline never moves. Only the connected human host may answer,

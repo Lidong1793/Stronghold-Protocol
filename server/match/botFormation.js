@@ -5,7 +5,7 @@ import { FORMATION_PROFILES } from './botFormationProfiles.js';
 const tileValues = new WeakMap();
 
 // [ASSUMED] Experimental combinations of owner v0.2 zones and upstream 0.3 contact/safety ideas.
-export const FORMATION_MODES = ['legacy', 'learned', 'ordered', 'contact', 'refined', 'combined', 'optimized'];
+export const FORMATION_MODES = ['legacy', 'learned', 'ordered', 'contact', 'refined', 'combined', 'optimized', 'pool', 'adaptive', 'trio'];
 
 /** Explicit experimental preset; unmeasured difficulties retain owner v0.2. */
 export function resolveFormationMode(m) {
