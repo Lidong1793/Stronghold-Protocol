@@ -1032,3 +1032,6 @@ to shared availability (§30.2). 凯瑟琳's `pool_equip_kathe` is every shop-el
 
 
 Ioleta AI proposal (2026-10-16): experimental procurement and adaptive formation are the defaults for Ioleta AI / takeover; other strategies keep upstream procurement and add the learned candidate. Explicit legacy purchase and formation overrides remain. Ordinary demonstrated R1–13 maps use direction-aware candidate de-duplication, a three-candidate minimum before completed-zero-leak early exit and a deterministic tick budget of 12 per-candidate caps. Server, browser and Worker share the limits and fallback inputs. These [ASSUMED] heuristics change decisions, not official game rules. Sources, costs and measured limitations: [Ioleta proposal](research/ioleta-adaptive-default.md).
+
+
+PR #3 review fix (2026-10-16): Ioleta defers equipment for missing procurement targets only while the existing refresh budget and affordability gate allow another search. With 2 funds and no free refresh it can buy and equip a usable 1-fund item instead of losing unused funds at prep end. Core procurement and upgrade priorities are unchanged.

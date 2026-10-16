@@ -212,3 +212,6 @@ destroyed, consumed, wiped from temp, or removed on elimination — repays that 
 returns its equipment to the hand, so the equipment debt stays. 整备, random grants, 机变 item cards and strategy
 grants that are not an already-shown card stay stock-limited. Rockrock and Flametail use the measured weighted
 subsets described in DATA and §30.2.
+
+
+PR #3 review fix (2026-10-16): Ioleta defers equipment for missing procurement targets only while the existing refresh budget and affordability gate allow another search. With 2 funds and no free refresh it can buy and equip a usable 1-fund item instead of losing unused funds at prep end. Core procurement and upgrade priorities are unchanged.

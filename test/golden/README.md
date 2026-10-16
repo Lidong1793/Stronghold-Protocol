@@ -97,3 +97,27 @@ Ioleta AI proposal (2026-10-16): default procurement, formation candidates and i
 - coop2-NORMAL-4-coverage-standins
 - coop2-NORMAL-3-coverage-diy
 - coop2-NORMAL-1-unowned-roster
+
+
+PR #3 review fix (2026-10-16): Ioleta defers equipment for missing procurement targets only while the existing refresh budget and affordability gate allow another search. With 2 funds and no free refresh it can buy and equip a usable 1-fund item instead of losing unused funds at prep end. Core procurement and upgrade priorities are unchanged.
+The resulting equipment purchases intentionally move these full-match golden scenarios; all battle-only fixtures remain unchanged:
+
+- solo-FUNNY-1
+- solo-FUNNY-2
+- solo-NORMAL-1
+- solo-NORMAL-2
+- solo-HARD-1
+- solo-HARD-2
+- solo-ABYSS-1
+- solo-ABYSS-2
+- coop2-NORMAL-3
+- coop2-HARD-4
+- coop4-FUNNY-6
+- coop4-ABYSS-7
+- coop2-NORMAL-8-serverrun
+- solo-HARD-9-boosted
+- coop2-ABYSS-10-boosted
+- coop2-NORMAL-14-standins
+- coop2-NORMAL-70-diy
+- coop2-NORMAL-4-coverage-standins
+- coop2-NORMAL-3-coverage-diy

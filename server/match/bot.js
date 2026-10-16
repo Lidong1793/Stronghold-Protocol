@@ -1855,6 +1855,9 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
     if (freeSlot(ps.hand) < 0 && ps.shop.slots.some((s) => s && !s.sold && s.kind === 'chess' && ps.priceOf(s) <= ps.funds && ps.completesChessMerge(s.id))) {
       sellWeakestHand(m, ps, { handOnly: true, keepFresh: true });
     }
+    // Share the affordable-search gate between item deferral and the eventual refresh.
+    const refreshCost = ps.shop.freeRefreshes > 0 ? 0 : gd.refreshPrice;
+    const canRefresh = refreshes < maxRefreshes && ps.funds >= refreshCost + (refreshCost > 0 ? Math.max(minPrice, reserve) : minPrice);
     let best = -1;
     let bestS = 0;
     let bestPrice = Infinity;
@@ -1901,7 +1904,7 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
         if (!boardFull) sc += 8;
       } else {
         if (fillOnly) return;
-        if (experimental && (experimentalCanLevel(m, ps) || (experimentalSearchTargets(m, ps).length && ps.funds > 1))) return;
+        if (experimental && (experimentalCanLevel(m, ps) || (experimentalSearchTargets(m, ps).length && canRefresh))) return;
         if (!canUseItem(m, ps, { id: s.id })) return;
         if (freeSlot(ps.hand) < 0) return;
         if (ps.funds - price < reserve && !ps.completesItemMerge(s.id)) return;
@@ -1917,8 +1920,6 @@ function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0 } = {}) {
     });
     // leftover funds are lost at prep end: reroll while a purchase stays affordable (a band that keeps them: down to its
     // reserve — a free refresh is always taken)
-    const refreshCost = ps.shop.freeRefreshes > 0 ? 0 : gd.refreshPrice;
-    const canRefresh = refreshes < maxRefreshes && ps.funds >= refreshCost + (refreshCost > 0 ? Math.max(minPrice, reserve) : minPrice);
     // a full board buys only what improves it (merge progress, a lineup upgrade), and only when it is worth more than
     // the refreshes its price would pay for (each may show the third copy of a held pair, refreshValue)
     let buy = best >= 0 && bestS >= (boardFull ? BUY_FULL_MIN : 3);

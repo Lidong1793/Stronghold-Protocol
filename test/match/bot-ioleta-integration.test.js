@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { arrange, botPrepBegin, deferExperimentalMerge, levelUp } from '../../server/match/bot.js';
-import { makeMatch, give } from './harness.js';
+import { arrange, botPrep, botPrepBegin, deferExperimentalMerge, levelUp } from '../../server/match/bot.js';
+import { makeMatch, give, legalTileFor } from './harness.js';
+import { experimentalSearchTargets } from '../../server/match/botIoletaExperimental.js';
 import { createRng } from '../../server/sim/rng.js';
 
 function setup(t, experimental = true) {
@@ -16,6 +17,24 @@ function setup(t, experimental = true) {
   ps.funds = 0;
   return { m, ps };
 }
+
+test('experimental buys usable equipment when remaining funds cannot search for missing targets', t => {
+  const { m, ps } = setup(t);
+  const operator = 'chess_char_1_09_a', item = 'chess_item_1_01_e_a';
+  give(m, ps, operator, 'board', legalTileFor(m, ps, operator));
+  ps.funds = 2;
+  ps.shop.slots = [
+    ...Array.from({ length: 3 }, () => ({ kind: 'chess', id: operator, basePrice: 2, sold: true })),
+    { kind: 'item', id: item, basePrice: 1, sold: false },
+  ];
+  assert.ok(experimentalSearchTargets(m, ps).length > 0);
+  botPrep(m, ps);
+  assert.equal(ps.stats.refreshes, 0);
+  assert.equal(ps.shop.slots[3].sold, true);
+  assert.equal(ps.funds, 1);
+  assert.ok([...ps.board.values()].some(p => p.items?.some(i => i.id === item)));
+  assert.equal(ps.ready, true);
+});
 
 test('experimental R7 escape upgrades L1 without elite gate; legacy is unchanged', t => {
   for (const enabled of [false, true]) {
