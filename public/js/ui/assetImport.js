@@ -189,7 +189,7 @@ export function AssetImportButton() {
 
   return html`<div class="title-assets__item">
     <${Button} variant="secondary" block=${true} size="sm" data-testid="asset-import" aria-describedby="title-asset-import-hint"
-      onClick=${() => setOpen(true)}>${t('导入素材包')}<//>
+      onClick=${() => setOpen(true)}>${support.ok ? t('导入素材包') : t('导入素材包（暂不可用）')}<//>
     <small id="title-asset-import-hint">${support.ok ? t('读取自己的素材包，美术不占服务器流量。') : t('导入需要 HTTPS 或 localhost。')}</small>
     <${Modal} open=${open} onClose=${close} title=${t('导入素材包')} class="asset-import-dialog" actions=${html`
       <${Button} onClick=${close}>${t('关闭')}<//>`}>

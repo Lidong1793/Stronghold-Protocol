@@ -1842,6 +1842,7 @@
   "已请求浏览器尽量保留这些素材。": "The browser was asked to keep these assets if it can.",
   "浏览器可能在存储空间不足时清掉导入的素材。": "The browser may delete imported assets when storage is low.",
   "导入素材包": "Import asset pack",
+  "导入素材包（暂不可用）": "Import asset pack (temporarily unavailable)",
   "读取自己的素材包，美术不占服务器流量。": "Reads your own asset pack: the art uses no server traffic.",
   "导入需要 HTTPS 或 localhost。": "Import needs HTTPS or localhost.",
   "从素材包 zip、完整包 zip 或自己的 public/assets 文件夹导入。只收下和服务器清单哈希一致的文件，不上传任何内容。": "Import from an asset-pack zip, a full-pack zip or your own public/assets folder. Only files whose hash matches the server manifest are kept. Nothing is uploaded.",

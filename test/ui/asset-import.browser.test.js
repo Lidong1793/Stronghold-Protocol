@@ -113,6 +113,7 @@ test('import has its own dialog that requests nothing on opening; imported art i
   await page.goto(srv.url);
   await page.waitForFunction(() => navigator.serviceWorker.controller != null, { timeout: 20000 });
   await page.waitForSelector('[data-testid="asset-import"]');
+  assert.equal(await page.$eval('[data-testid="asset-import"]', (el) => el.textContent.trim()), '导入素材包');
   // a first gesture unlocks audio (public/js/audio.js): make it elsewhere, so what follows is the dialog's own traffic
   await page.click('.title-tag');
   await new Promise((resolve) => setTimeout(resolve, 500));
@@ -184,6 +185,7 @@ test('import has its own dialog that requests nothing on opening; imported art i
   });
   await insecure.goto(srv.url);
   await insecure.waitForSelector('[data-testid="asset-import"]');
+  assert.equal(await insecure.$eval('[data-testid="asset-import"]', (el) => el.textContent.trim()), '导入素材包（暂不可用）');
   assert.match(await insecure.$eval('#title-asset-import-hint', (el) => el.textContent), /HTTPS/, 'the hint under the button says why');
   await insecure.click('[data-testid="asset-import"]');
   await insecure.waitForSelector('[data-testid="asset-import-unavailable"]');
