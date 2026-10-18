@@ -30,3 +30,12 @@ ABYSS R1–8 十对、R9 九对、R10 七对、R11 四对；限定完整 R11 四
 ## 验证边界
 
 保持原版默认，golden 不应变更；启用路径单独测试。浏览器 E2E 未运行。布局工具见 [layout-lab](../../tools/layout-lab/README.md)。
+
+## PR #690 修订记录（2026-10-18）
+
+按维护者反馈，将本 PR 的修订说明从已发布的 0.3.0 历史移至本研究记录。原始实验 JSON 的 rawDirectory 现为工作树根目录下的相对路径；原始日志位于本地忽略目录，未随仓库发布。
+
+
+### 可选罗素专项 AI 与自适应演习
+
+[ASSUMED] 默认保留原版 AI；SP_BOT_IOLETA_POLICY=experimental 或 Match 的 botIoletaPolicy 启用罗素采购与 adaptive 站位。自动选策略优先可用且未占用的罗素，排除歌利亚和杜宾，真人选择不变。装备让位于搜牌仅在实际刷新预算与资金足够时生效。示教仅覆盖普通 R1–13 已知地图，首批三个候选，完整零漏即停止扩展，否则总预算为单候选 tick 上限的 12 倍，在候选之间检查；服务端及浏览器委派使用同一限制。来源、假设、历史证据和配置见 [罗素 AI 说明](../research/ioleta-adaptive-default.md)。未修改官方机制或 golden 场景。

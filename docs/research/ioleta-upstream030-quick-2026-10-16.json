@@ -546,7 +546,7 @@
     ],
     "teammates": "upstream 0.3.0 both groups",
     "noUnite": true,
-    "rawDirectory": "C:/Users/lidong/.codex/worktrees/ioleta-fast-compare/StrongholdProtocol/.cache/ioleta-upstream030-quick-20261016",
+    "rawDirectory": ".cache/ioleta-upstream030-quick-20261016",
     "verification": "40 records, no errors, matched setup, original bot source verified, finite prep timings"
   }
 }
